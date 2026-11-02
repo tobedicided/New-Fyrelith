@@ -280,7 +280,7 @@ do
  if not ok then fyEnv.FyrelithLoadDelayError=tostring(err)end
 end
 if fyEnv.FyrelithReturnLobbyInProgress then return end
-local fyBuild='FYRELITH_SUMMER_21_20261102_PLACEMENT16'
+local fyBuild='FYRELITH_SUMMER_21_20261102_MOBILE17'
 local fyProfile='FyrelithDefaultNoMap'
 local fyPrior=fyEnv.FyrelithExecutionState
 if fyPrior and fyPrior.Game==game and fyPrior.Build==fyBuild and fyPrior.Profile==fyProfile and not fyPrior.Cancelled then
@@ -939,6 +939,9 @@ local function page(name)
 end
 for _,name in ipairs({'Summon','Auto Play','Event','Macro','Dungeon','Misc','Webhook'}) do page(name) end
 local settings=page('Settings')
+settings.Active=true
+settings.AutomaticCanvasSize=Enum.AutomaticSize.Y
+settings.ScrollingDirection=Enum.ScrollingDirection.Y
 local appearance=panel(settings,'Appearance',3,3,439,407,'card',10)
 local interface=panel(settings,'Interface',459,3,430,407,'card',10)
 appearance.BackgroundTransparency=.16; interface.BackgroundTransparency=.16
@@ -1218,7 +1221,7 @@ local function fit()
  local height=1040
  if mobile then
   -- Increase control size while shortening the scroll viewport to fit vertically.
-  target=math.max(.05,math.min(target,math.max(1,safe.Y-28)/480))
+  target=math.max(.01,math.min(target,math.max(1,safe.Y-28)/480,math.max(1,safe.X-28)/960))
   height=math.clamp(math.max(1,safe.Y-28)/target,480,1040)
  end
  uiScale.Scale=mobile and target or math.min(target,fitScale)
@@ -1231,6 +1234,7 @@ local function fit()
  for _,p in pairs(pages)do
   p.Size=UDim2.fromOffset(908,math.max(80,body.Size.Y.Offset-p.Position.Y.Offset))
   p.ScrollingEnabled=true
+  p.Active=true
  end
  for _,p in pairs(pages) do p.ClipsDescendants=true end
  if dropdown.open then dropdown.set(false,true) end
