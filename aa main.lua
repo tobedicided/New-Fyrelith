@@ -280,7 +280,7 @@ do
  if not ok then fyEnv.FyrelithLoadDelayError=tostring(err)end
 end
 if fyEnv.FyrelithReturnLobbyInProgress then return end
-local fyBuild='FYRELITH_SUMMER_21_20261102_REWARDS14'
+local fyBuild='FYRELITH_SUMMER_21_20261102_PLACEMENT16'
 local fyProfile='FyrelithDefaultNoMap'
 local fyPrior=fyEnv.FyrelithExecutionState
 if fyPrior and fyPrior.Game==game and fyPrior.Build==fyBuild and fyPrior.Profile==fyProfile and not fyPrior.Cancelled then
@@ -7017,7 +7017,7 @@ do
  local nextRequest=0 local rejected={}
  local upgradeHolds=setmetatable({},{__mode='k'}) a.UpgradeHolds=upgradeHolds
  function a.CanUpgrade(unit)
-  local stats=unit and unit:FindFirstChild('_stats');local id=stats and stats:FindFirstChild('id');if id and a.IsLimitedBuff and a.IsLimitedBuff(id.Value)then return false end
+  local stats=unit and unit:FindFirstChild('_stats');local id=stats and stats:FindFirstChild('id');if id and id.Value~='aqua_evolved'and a.IsLimitedBuff and a.IsLimitedBuff(id.Value)then return false end
   local hold=upgradeHolds[unit] if not hold then return true end
   if val(unit:FindFirstChild('_stats'),'upgrade')~=hold.Before or os.clock()>=hold.Until then upgradeHolds[unit]=nil return true end
   return false
@@ -7039,7 +7039,7 @@ do
   return count<math.min(4,cap)
  end
  function a.ValidateAutoAction(step,unit,kind)
-  if step.Action=='Upgrade'and(kind=='smart'or kind=='auto')and a.IsLimitedBuff(step.UnitId)then return false,'Buff rotation units are not automatically upgraded'end
+  if step.Action=='Upgrade'and(kind=='smart'or kind=='auto')and step.UnitId~='aqua_evolved'and a.IsLimitedBuff(step.UnitId)then return false,'Buff rotation units are not automatically upgraded'end
   if step.Action=='Place' then
    local all=towers()
    if not a.BuffPlacementAllowed(step.UnitId,all)then return false,'Buff placement limit reached for this unit' end
@@ -8074,7 +8074,7 @@ end)()
   return own
  end
  function a.PlacementSnapshot(unit,all)
-  local snapshot={Items={},ByModel={},Height=2.66}
+  local snapshot={Items={},ByModel={},Height=2.66,Padding=a.GetSmartPlacementMargin(unit.Id)}
   for _,t in ipairs(all) do if t.Id==unit.Id then
    local hitbox=t.Unit:FindFirstChild('_hitbox')
    if hitbox and hitbox:IsA('Part') then snapshot.Height=hitbox.Shape==Enum.PartType.Cylinder and hitbox.Size.X or hitbox.Size.Y break end
@@ -8359,7 +8359,7 @@ end)()
   if not nextUpgrade and a.NativeUpgradeInfo then nextUpgrade=a.NativeUpgradeInfo(t)end
   local cost=nextUpgrade and price(t,t.Upgrade+1)
   if not cost then return end local divisor=math.max(1,cost)
-  local unitRole=role(t.Id)
+  local unitRole=t.Id=='aqua_evolved'and'damage'or role(t.Id)
   if unitRole=='farm' then
    local now=tonumber(val(t.Stats,'farm_amount')) or 0
    local income=tonumber(nextUpgrade.farm_amount) or now
@@ -8769,7 +8769,12 @@ end)()
    choice,decision=a.SelectInvestment(choices,combat,cashNow,smart.Budget,buffBlocked)
    if not choice or choice.Tower then break end
    local cf,key=a.SmartPosition(choice.Unit,all,context)
-   if cf then choice.CF=cf choice.Key=key break end
+   if cf then
+    local allowed,reason=a.ValidateAutoAction({Action='Place',UUID=choice.Unit.UUID,UnitId=choice.Unit.Id,CF=cfData(cf)},nil,'smart')
+    if allowed and a.CheckPlacementRequest then allowed,reason=a.CheckPlacementRequest({Action='Place',UUID=choice.Unit.UUID,UnitId=choice.Unit.Id,CF=cfData(cf)})end
+    if allowed then choice.CF=cf choice.Key=key break end
+    key=reason or 'Placement currently unavailable'
+   end
    choice.Excluded=true smart.Reason=key positionFailure=key choice=nil
   end
   if not choice and positionFailure then decision=positionFailure end
@@ -9106,7 +9111,8 @@ end)()
   c.Place=c.Place~=false;c.AutoSkill=c.AutoSkill==true;c.BossOnly=c.BossOnly==true
   c.MaxPlaced=T.Number(c.MaxPlaced,cap,0,cap)
   c.UpgradeTo=T.Number(c.UpgradeTo,upgrades,0,upgrades)
-  if a.IsLimitedBuff(id)then c.UpgradeTo=0 end
+  if a.IsLimitedBuff(id)and id~='aqua_evolved'then c.UpgradeTo=0 end
+  if id=='aqua_evolved'and not c.HolyDamageUpgradeEnabled then c.UpgradeTo=upgrades;c.HolyDamageUpgradeEnabled=true end
   c.Priority=T.Number(c.Priority,1,1,6);c.FromWave=T.Number(c.FromWave,1,1,999)
   return c
  end
@@ -9134,7 +9140,7 @@ end)()
  function T.AllowsSkill(id)local c=T.Get(id);return c.AutoSkill and wave()>=c.FromWave and(not c.BossOnly or T.HasBoss())end
  local validate=a.ValidateAutoAction
  function a.ValidateAutoAction(step,unit,kind)
-  if step.Action=='Upgrade'and(kind=='smart'or kind=='auto')and a.IsLimitedBuff(step.UnitId)then return false,'Buff rotation units are not automatically upgraded'end
+  if step.Action=='Upgrade'and(kind=='smart'or kind=='auto')and step.UnitId~='aqua_evolved'and a.IsLimitedBuff(step.UnitId)then return false,'Buff rotation units are not automatically upgraded'end
   if step.Action=='Upgrade' then
    local stats=unit and unit:FindFirstChild('_stats')
    local id=step.UnitId or val(stats,'id')
@@ -9298,7 +9304,8 @@ end)()
   close();selectedUnit=u;T.SelectedUUID=u.UUID
   local c=T.Get(u.Id,T.Mode);local cap,upgrades=T.Limits(u.Id,u.UUID)
   c.UpgradeTo=T.Number(c.UpgradeTo,upgrades,0,upgrades)
-  if a.IsLimitedBuff(id)then c.UpgradeTo=0 end
+  if a.IsLimitedBuff(id)and id~='aqua_evolved'then c.UpgradeTo=0 end
+  if id=='aqua_evolved'and not c.HolyDamageUpgradeEnabled then c.UpgradeTo=upgrades;c.HolyDamageUpgradeEnabled=true end
   local togglePainters={}
   overlay=new('Frame',{Name='TeamUnitEditor',Position=UDim2.fromOffset(462,0),Size=UDim2.fromOffset(438,738),BackgroundTransparency=1,ZIndex=8},page);T.Editor=overlay
   local modal=themedBox(overlay,'Modal',0,0,438,738)
@@ -11065,6 +11072,9 @@ end
 local patchedSelect
 patchedSelect=function(candidates,combat,cash,budget,blocked)
  if not A.Config.Smart then return X.OriginalSelect(candidates,combat,cash,budget,blocked)end
+ for _,choice in ipairs(candidates)do
+  if choice.Kind=='Upgrade'and choice.Tower and choice.Tower.Id=='aqua_evolved'then choice.Role='damage'end
+ end
  local filtered=X.Filter(candidates,combat.FarmPolicy)
  local choice,reason,handled=X.Choose(filtered,combat,cash,budget)
  if handled then X.LastReason=reason;return choice,reason end
@@ -12028,6 +12038,7 @@ local function finite(value,fallback,low,high)
  return math.clamp(math.floor(n),low,high)
 end
 for _,key in ipairs({'StopPearls','StopRuns','Runs','Reserve','Budget','Spent'})do C[key]=finite(C[key],0,0,1000000000)end
+C.StopPearls=0;C.StopRuns=0
 C.MinTier=finite(C.MinTier,1,1,12);C.MaxTier=finite(C.MaxTier,12,C.MinTier,12);C.PortalWait=finite(C.PortalWait,10,0,120)
 do
  local order,seen={},{}
@@ -12447,7 +12458,7 @@ if A then
  A.DungeonElementWeight=weightWrapper
  originalClear=A.PlacementIsClear
  clearWrapper=function(point,snapshot,...)
-  if S.FireBlocked(point,1)then return false end
+  if S.FireBlocked(point,snapshot and snapshot.Padding or 1)then return false end
   return originalClear(point,snapshot,...)
  end
  A.PlacementIsClear=clearWrapper
@@ -12523,11 +12534,7 @@ for i,mode in ipairs({'Solo','Matchmaking'})do
  local value=mode;local option=button(entryMenu,'Choose'..mode,mode,function()S.SetEntryMode(value);entryMenu.Visible=false;S.RefreshUI()end);option.LayoutOrder=i
 end
 painters[#painters+1]=function()entryPicker.Text='Join mode   ·   '..C.EntryMode end
-number(join,'StopPearls','Stop at total Pearls · 0 unlimited',0,1000000000)
-number(join,'StopRuns','Stop after runs · 0 unlimited',0,1000000)
-local countText=text(join,'RunCount','Runs: 0',22,12)
-button(join,'ResetRunCount','Reset run counter',function()C.Runs=0;S.Save()end)
-button(join,'RetryQueue','Retry queue / purchase',function()S.QueueRequested=false;S.Prompted=false;S.MatchmakingPaused=false;S.PortalPaused=false;S.ShopPaused=false;purchase=nil;note('Retry enabled')end)
+local countText=text(join,'RunCount','Summer Pearls: 0',22,12)
 local statusText=text(join,'Status',S.Status,44,12)
 local cards=card(1,'CHALLENGE CARDS',2)
 toggle(cards,'Cards','Auto select cards')
@@ -12629,7 +12636,7 @@ function S.RefreshUI()
  local current=currentEvent();local level=current and current.current_level_data
  local map=level and level.map;local forecast=current and current.forecast
  liveText.Text='Now: '..tostring(Maps[map or'']and Maps[map].name or map or'Unknown')..' · '..weatherName(weatherId())..'\nNext: '..weatherName(forecast and forecast.weather)
- countText.Text='Runs: '..C.Runs..'  ·  Summer Pearls: '..pearls();statusText.Text=S.Status
+ countText.Text='Summer Pearls: '..pearls();statusText.Text=S.Status
  portalText.Text='Matching portals: '..#S.PortalChoices();spendText.Text='Reserved / spent today: '..C.Spent..' / '..C.Budget
  noticeText.Text=C.Notify and(S.Notice or'Watching the forecast')or'Alerts are off'
  local names={};for _,id in ipairs(C.WeatherOrder)do names[#names+1]=weatherName(id)end;orderText.Text='Weather priority: '..(#names>0 and table.concat(names,' > ')or'Auto · best for team')
