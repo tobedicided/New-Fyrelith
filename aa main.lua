@@ -1,63 +1,49 @@
--- [[ POTASSIUM & UNIVERSAL EXECUTOR COMPATIBILITY POLYFILL ]] --
-do
-    local env = (type(getgenv) == "function" and getgenv()) or _G
-    local memStorage = {}
-    local nativeRead = type(readfile) == "function" and readfile
-    local nativeWrite = type(writefile) == "function" and writefile
-    local nativeIsfile = type(isfile) == "function" and isfile
-
-    env.readfile = function(path)
-        local ok, res = pcall(function() return nativeRead and nativeRead(path) end)
-        if ok and res ~= nil then return res end
-        return memStorage[path] or ""
-    end
-    env.writefile = function(path, content)
-        pcall(function() if nativeWrite then nativeWrite(path, content) end end)
-        memStorage[path] = content
-    end
-    env.isfile = function(path)
-        local ok, res = pcall(function() return nativeIsfile and nativeIsfile(path) end)
-        if ok and type(res) == "boolean" then return res end
-        return memStorage[path] ~= nil
-    end
-    env.delfile = function(path)
-        pcall(function() if type(delfile) == "function" then delfile(path) end end)
-        memStorage[path] = nil
-    end
-
-    local nativeIsfolder = type(isfolder) == "function" and isfolder
-    local nativeMakefolder = type(makefolder) == "function" and makefolder
-    local memFolders = {}
-    env.isfolder = function(path)
-        local ok, res = pcall(function() return nativeIsfolder and nativeIsfolder(path) end)
-        if ok and type(res) == "boolean" then return res end
-        return memFolders[path] == true
-    end
-    env.makefolder = function(path)
-        pcall(function() if nativeMakefolder then nativeMakefolder(path) end end)
-        memFolders[path] = true
-    end
-    if type(listfiles) ~= "function" then
-        env.listfiles = function(path) return {} end
-    end
-
-    if type(getcustomasset) ~= "function" and type(getsynasset) ~= "function" then
-        env.getcustomasset = function() return "" end
-        env.getsynasset = function() return "" end
-    end
-
-    if type(queue_on_teleport) ~= "function" then
-        local q = queueonteleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
-        if type(q) == "function" then
-            env.queue_on_teleport = q
-        else
-            env.queue_on_teleport = function() end
-        end
-    end
-end
-
 -- Full default profile without Macro Map. Future settings save separately in FyrelithDefaultSettings.
 local source=[=======[
+-- FYRELITH_EXECUTOR_COMPAT_V1
+-- Executor compatibility is scoped to Fyrelith chunks, never installed into global debug APIs.
+local E=getgenv()
+local nativeLoad=loadstring
+local rawDebug=debug or{}
+local C={Errors={},Missing={},Version=1}
+E.FyrelithCompatibility=C
+local d={};for k,v in pairs(rawDebug)do d[k]=v end
+if type(d.getinfo)~='function'and type(d.info)=='function'then
+ d.getinfo=function(fn)local source,line,name=d.info(fn,'sln');return {source=source,short_src=source,currentline=line,name=name}end
+end
+if type(d.getupvalues)~='function'and type(getupvalues)=='function'then d.getupvalues=getupvalues end
+if type(d.setupvalue)~='function'and type(setupvalue)=='function'then d.setupvalue=setupvalue end
+if type(d.traceback)~='function'then d.traceback=function(err)return tostring(err)end end
+C.Debug=d
+function C.Report(name,err)
+ C.Errors[#C.Errors+1]={Module=name,Error=tostring(err)}
+ warn('Fyrelith ['..tostring(name)..']: '..tostring(err))
+ local player=game:GetService('Players').LocalPlayer
+ local parent=player and player:FindFirstChildOfClass('PlayerGui');if not parent then return end
+ local notice=parent:FindFirstChild('FyrelithStartupNotice')
+ if not notice then
+  notice=Instance.new('ScreenGui');notice.Name='FyrelithStartupNotice';notice.ResetOnSpawn=false;notice.DisplayOrder=2147483646
+  local label=Instance.new('TextBox');label.Name='Details';label.TextEditable=false;label.ClearTextOnFocus=false;label.TextWrapped=true;label.TextSize=14;label.TextColor3=Color3.fromRGB(255,225,225);label.BackgroundColor3=Color3.fromRGB(30,18,24);label.BackgroundTransparency=.1;label.Size=UDim2.new(.8,0,0,115);label.Position=UDim2.new(.1,0,0,20);label.Parent=notice;notice.Parent=parent
+ end
+ notice.Details.Text='Fyrelith could not load '..tostring(name)..'\n'..tostring(err)..'\nCopy this message when reporting the problem.'
+end
+local prefix='local __c=getgenv().FyrelithCompatibility;local debug=__c.Debug;local loadstring=__c.Load;\n'
+function C.Load(source,name)
+ local fn,err=nativeLoad(prefix..source,name)
+ if not fn then return nil,err end
+ if type(name)=='string'and name:find('Fyrelith',1,true)then
+  return function(...)
+   local result=table.pack(xpcall(fn,d.traceback,...))
+   if not result[1]then C.Report(name,result[2]);return end
+   return table.unpack(result,2,result.n)
+  end
+ end
+ return fn
+end
+
+local debug=C.Debug
+local loadstring=C.Load
+
 -- Keep this default profile independent from an already running custom profile.
 do
  local env=getgenv()
@@ -85,11 +71,7 @@ local fyStorage=(function()
  local storage={Version=2,Cache='.FyrelithDefaultCache',Macros='FyrelithDefaultSettings/Macros',Moved=0,Errors=0,LegacyQueue=(existing and existing.LegacyQueue)or(env.FyrelithDefaultTeleportQueued==true and not env.FyrelithDefaultCacheQueueVersion)}
  env.FyrelithDefaultLoaderStorage=storage
  local function folder(path)
-  pcall(function()
-   if type(native.Folder)=='function' and type(native.Make)=='function' then
-    if not native.Folder(path) then native.Make(path) end
-   end
-  end)
+  if type(native.Folder)=='function'and type(native.Make)=='function'then if not native.Folder(path)then native.Make(path)end else error('Executor folder support is required')end
  end
  local ok=pcall(function()folder(storage.Cache);folder('FyrelithDefaultSettings');folder(storage.Macros)end)
  storage.Ready=ok
@@ -342,7 +324,7 @@ do
  if not ok then fyEnv.FyrelithLoadDelayError=tostring(err)end
 end
 if fyEnv.FyrelithReturnLobbyInProgress then return end
-local fyBuild='FYRELITH_SUMMER_21_20261102_TARGET18'
+local fyBuild='FYRELITH_SUMMER_21_20261103_COMPAT19'
 local fyProfile='FyrelithDefaultNoMap'
 local fyPrior=fyEnv.FyrelithExecutionState
 if fyPrior and fyPrior.Game==game and fyPrior.Build==fyBuild and fyPrior.Profile==fyProfile and not fyPrior.Cancelled then
@@ -563,7 +545,7 @@ local function waitForFyrelithGame()
   local registry
   if debug and type(debug.getupvalues)=='function' then
    local ok,upvalues=pcall(debug.getupvalues,Loader.load_client_service)
-   if ok and type(upvalues)=='table' then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
+   if ok then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
   end
   local ready={} local complete=true
   if registry then
@@ -571,16 +553,12 @@ local function waitForFyrelithGame()
     ready[name]=entry and entry.module
     if type(ready[name])~='table' then complete=false break end
    end
-  else
-   -- Universal direct service loader fallback for Potassium and other executors
-   for _,name in ipairs(required) do
-    local ok,value=pcall(Loader.load_client_service,script,name)
-    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,module,name) end
-    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,name) end
-    ready[name]=ok and value or nil
-    if type(ready[name])~='table' then complete=false break end
+  elseif player:FindFirstChild('_stats') and player:FindFirstChild('_settings') then
+   -- Fallback for executors without upvalue inspection.
+   for _,name in ipairs(required) do local ok,value=pcall(Loader.load_client_service,module,name)
+    ready[name]=ok and value or nil if type(ready[name])~='table' then complete=false break end
    end
-  end
+  else complete=false end
   if complete then
    local U=ready.UnitCollectionServiceClient local E=ready.EndpointsClient local G=ready.GUIService
    if type(E.invoke_server)=='function' and E.session and G.session and U.session and U.session.profile_data and U.session.collection and U.session.inventory then
@@ -2256,7 +2234,7 @@ local function waitForFyrelithGame()
   local registry
   if debug and type(debug.getupvalues)=='function' then
    local ok,upvalues=pcall(debug.getupvalues,Loader.load_client_service)
-   if ok and type(upvalues)=='table' then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
+   if ok then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
   end
   local ready={} local complete=true
   if registry then
@@ -2264,16 +2242,12 @@ local function waitForFyrelithGame()
     ready[name]=entry and entry.module
     if type(ready[name])~='table' then complete=false break end
    end
-  else
-   -- Universal direct service loader fallback for Potassium and other executors
-   for _,name in ipairs(required) do
-    local ok,value=pcall(Loader.load_client_service,script,name)
-    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,module,name) end
-    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,name) end
-    ready[name]=ok and value or nil
-    if type(ready[name])~='table' then complete=false break end
+  elseif player:FindFirstChild('_stats') and player:FindFirstChild('_settings') then
+   -- Fallback for executors without upvalue inspection.
+   for _,name in ipairs(required) do local ok,value=pcall(Loader.load_client_service,module,name)
+    ready[name]=ok and value or nil if type(ready[name])~='table' then complete=false break end
    end
-  end
+  else complete=false end
   if complete then
    local U=ready.UnitCollectionServiceClient local E=ready.EndpointsClient local G=ready.GUIService
    if type(E.invoke_server)=='function' and E.session and G.session and U.session and U.session.profile_data and U.session.collection and U.session.inventory then
@@ -3675,7 +3649,7 @@ do
  local FX=Loader.load_client_service(script,'SummonFX')
  local originalShow=S.on_show_hatch_effect
  local originalOpen=FX.open_star_new
- local fxSource=debug.getinfo(originalOpen).source
+ local fxSource=type(debug.getinfo)=='function'and debug.getinfo(originalOpen).source or nil
  local function instantOpen(unit,isUnit,preview,closeWindows,onComplete,context,params,options)
   if a.Alive and a.Enabled then
    a.SkippedEffects=(a.SkippedEffects or 0)+1
@@ -3699,7 +3673,7 @@ do
    local fn=connection.Function
    if type(fn)=='function' then
     local ok,info=pcall(debug.getinfo,fn)
-    if ok and info.source==fxSource then
+    if fxSource and ok and type(info)=='table'and info.source==fxSource then
      pcall(fn,{UserInputType=Enum.UserInputType.MouseButton1,KeyCode=Enum.KeyCode.Unknown},false)
     end
    end
@@ -12858,6 +12832,7 @@ X.Installed=true
 fyExecution.Starting=false fyExecution.Ready=true fyExecution.CompletedAt=os.clock()
 fyExecution.Gui.Destroying:Connect(function()if fyOwnsExecution()then fyExecution.Ready=false end end)
 end,debug.traceback)
+if not startupOK then C.Report('startup',startupError)end
 if not startupOK and fyOwnsExecution()then fyExecution.Starting=false fyExecution.Ready=false fyExecution.Error=startupError getgenv().FyrelithStartupError=startupError warn(startupError)end
 end)
 ]=======]
