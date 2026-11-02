@@ -280,7 +280,7 @@ do
  if not ok then fyEnv.FyrelithLoadDelayError=tostring(err)end
 end
 if fyEnv.FyrelithReturnLobbyInProgress then return end
-local fyBuild='FYRELITH_SUMMER_21_20261102_MOBILE17'
+local fyBuild='FYRELITH_SUMMER_21_20261102_TARGET18'
 local fyProfile='FyrelithDefaultNoMap'
 local fyPrior=fyEnv.FyrelithExecutionState
 if fyPrior and fyPrior.Game==game and fyPrior.Build==fyBuild and fyPrior.Profile==fyProfile and not fyPrior.Cancelled then
@@ -9111,12 +9111,10 @@ end)()
   if type(id)~='string'then return {Place=false,MaxPlaced=0,UpgradeTo=0,Priority=6,AutoSkill=false,FromWave=1,BossOnly=false}end
   mode=mode or T.ActiveMode();local p=T.Profiles[mode];if type(p)~='table'then p={} T.Profiles[mode]=p end
   local cap,upgrades=T.Limits(id);local defaultCap=T.Number((Units[id]or{}).spawn_cap,6,1,30)
-  local c=p[id];if type(c)~='table'then c={Place=true,MaxPlaced=defaultCap,UpgradeTo=upgrades,Priority=1,AutoSkill=false,FromWave=1,BossOnly=false};p[id]=c end
+  local c=p[id];if type(c)~='table'then c={Place=true,MaxPlaced=defaultCap,UpgradeTo=(a.IsLimitedBuff(id)and id~='aqua_evolved')and 0 or upgrades,Priority=1,AutoSkill=false,FromWave=1,BossOnly=false};p[id]=c end
   c.Place=c.Place~=false;c.AutoSkill=c.AutoSkill==true;c.BossOnly=c.BossOnly==true
   c.MaxPlaced=T.Number(c.MaxPlaced,cap,0,cap)
-  c.UpgradeTo=T.Number(c.UpgradeTo,upgrades,0,upgrades)
-  if a.IsLimitedBuff(id)and id~='aqua_evolved'then c.UpgradeTo=0 end
-  if id=='aqua_evolved'and not c.HolyDamageUpgradeEnabled then c.UpgradeTo=upgrades;c.HolyDamageUpgradeEnabled=true end
+  if c.UpgradeTo==nil then c.UpgradeTo=(a.IsLimitedBuff(id)and id~='aqua_evolved')and 0 or upgrades end
   c.Priority=T.Number(c.Priority,1,1,6);c.FromWave=T.Number(c.FromWave,1,1,999)
   return c
  end
@@ -9265,7 +9263,7 @@ end)()
   end
   return false
  end
- connections[5]=UIS.InputBegan:Connect(function(input)T.BeginSliderAt(input)end)
+ -- Sliders receive input from their own hit area; global input also fired through overlapping toggles.
  local function close()
   table.clear(sliderTargets)
   finishDrag();if overlay then overlay:Destroy();overlay=nil end
@@ -9307,9 +9305,6 @@ end)()
  openUnit=function(u)
   close();selectedUnit=u;T.SelectedUUID=u.UUID
   local c=T.Get(u.Id,T.Mode);local cap,upgrades=T.Limits(u.Id,u.UUID)
-  c.UpgradeTo=T.Number(c.UpgradeTo,upgrades,0,upgrades)
-  if a.IsLimitedBuff(id)and id~='aqua_evolved'then c.UpgradeTo=0 end
-  if id=='aqua_evolved'and not c.HolyDamageUpgradeEnabled then c.UpgradeTo=upgrades;c.HolyDamageUpgradeEnabled=true end
   local togglePainters={}
   overlay=new('Frame',{Name='TeamUnitEditor',Position=UDim2.fromOffset(462,0),Size=UDim2.fromOffset(438,738),BackgroundTransparency=1,ZIndex=8},page);T.Editor=overlay
   local modal=themedBox(overlay,'Modal',0,0,438,738)
