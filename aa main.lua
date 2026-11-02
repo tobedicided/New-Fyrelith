@@ -280,7 +280,7 @@ do
  if not ok then fyEnv.FyrelithLoadDelayError=tostring(err)end
 end
 if fyEnv.FyrelithReturnLobbyInProgress then return end
-local fyBuild='FYRELITH_SUMMER_21_20261102_NATIVEVOTE13'
+local fyBuild='FYRELITH_SUMMER_21_20261102_REWARDS14'
 local fyProfile='FyrelithDefaultNoMap'
 local fyPrior=fyEnv.FyrelithExecutionState
 if fyPrior and fyPrior.Game==game and fyPrior.Build==fyBuild and fyPrior.Profile==fyProfile and not fyPrior.Cancelled then
@@ -11893,6 +11893,16 @@ E.FyrelithSummer=S
 local P=(function()
 -- Pure Summer policy: no game requests or persistent state.
 local P={}
+function P.CurrencyBonus(choice)
+ local total=0
+ for _,effect in pairs(type(choice)=='table'and choice.effects or{})do
+  local amount
+  if effect.type=='candy_multiplier'then amount=tonumber(effect.amount)
+  elseif effect.type=='ui_evidence'and effect.preference=='@pearls'then amount=(tonumber(effect.score)or 0)/100 end
+  if amount and amount==amount and math.abs(amount)<math.huge then total+=amount end
+ end
+ return total
+end
 function P.PriorityRank(choice,order)
  local title=tostring(choice.title or''):lower()
  for rank,key in ipairs(order or{})do
@@ -12302,13 +12312,16 @@ local function cardTick()
  local danger=false;local A=E.FyrelithAutoPlay
  if A and A.AnalyzeEnemies then local ok,context=pcall(A.AnalyzeEnemies);danger=ok and(context.Risk or context.AirRisk)or false end
  local ranks={};for i,id in ipairs(C.WeatherOrder)do ranks[id]=i end
- local best,bestScore,bestRank=nil,nil,math.huge
+ local best,bestScore,bestRank,bestCurrency=nil,nil,math.huge,-math.huge
  local function choose(mode)
   local keys={};for key in pairs(options or{})do keys[#keys+1]=key end;table.sort(keys,function(a,b)return tostring(a)<tostring(b)end)
   for _,key in ipairs(keys)do local choice=options[key];local score=P.CardScore(choice,mode,danger,C.SelectedCards,C.AvoidCards,ranks,choice.weather and teamWeatherWeight(choice.weather))
    local rank=P.PriorityRank(choice,C.CardOrder)
    if mode=='Selected only'and rank<math.huge and not C.AvoidCards[tostring(choice.title or''):lower()]then score=P.CardScore(choice,'Balanced',danger,C.SelectedCards,C.AvoidCards,ranks,choice.weather and teamWeatherWeight(choice.weather))end
-   if score and(rank<math.huge or C.Fallback or #C.CardOrder==0)and(not best or rank<bestRank or rank==bestRank and score>bestScore)and nativeUI.option_frames[key]then best=key;bestScore=score;bestRank=rank end
+   local currency=P.CurrencyBonus(choice)
+   local wins=not best or rank<bestRank or rank==bestRank and score and score>bestScore
+   if mode=='Rewards'then wins=not best or currency>bestCurrency or currency==bestCurrency and wins end
+   if score and(mode=='Rewards'or rank<math.huge or C.Fallback or #C.CardOrder==0)and wins and nativeUI.option_frames[key]then best=key;bestScore=score;bestRank=rank;bestCurrency=currency end
   end
  end
  choose(C.CardPolicy)
