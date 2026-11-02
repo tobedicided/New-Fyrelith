@@ -1,3 +1,61 @@
+-- [[ POTASSIUM & UNIVERSAL EXECUTOR COMPATIBILITY POLYFILL ]] --
+do
+    local env = (type(getgenv) == "function" and getgenv()) or _G
+    local memStorage = {}
+    local nativeRead = type(readfile) == "function" and readfile
+    local nativeWrite = type(writefile) == "function" and writefile
+    local nativeIsfile = type(isfile) == "function" and isfile
+
+    env.readfile = function(path)
+        local ok, res = pcall(function() return nativeRead and nativeRead(path) end)
+        if ok and res ~= nil then return res end
+        return memStorage[path] or ""
+    end
+    env.writefile = function(path, content)
+        pcall(function() if nativeWrite then nativeWrite(path, content) end end)
+        memStorage[path] = content
+    end
+    env.isfile = function(path)
+        local ok, res = pcall(function() return nativeIsfile and nativeIsfile(path) end)
+        if ok and type(res) == "boolean" then return res end
+        return memStorage[path] ~= nil
+    end
+    env.delfile = function(path)
+        pcall(function() if type(delfile) == "function" then delfile(path) end end)
+        memStorage[path] = nil
+    end
+
+    local nativeIsfolder = type(isfolder) == "function" and isfolder
+    local nativeMakefolder = type(makefolder) == "function" and makefolder
+    local memFolders = {}
+    env.isfolder = function(path)
+        local ok, res = pcall(function() return nativeIsfolder and nativeIsfolder(path) end)
+        if ok and type(res) == "boolean" then return res end
+        return memFolders[path] == true
+    end
+    env.makefolder = function(path)
+        pcall(function() if nativeMakefolder then nativeMakefolder(path) end end)
+        memFolders[path] = true
+    end
+    if type(listfiles) ~= "function" then
+        env.listfiles = function(path) return {} end
+    end
+
+    if type(getcustomasset) ~= "function" and type(getsynasset) ~= "function" then
+        env.getcustomasset = function() return "" end
+        env.getsynasset = function() return "" end
+    end
+
+    if type(queue_on_teleport) ~= "function" then
+        local q = queueonteleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+        if type(q) == "function" then
+            env.queue_on_teleport = q
+        else
+            env.queue_on_teleport = function() end
+        end
+    end
+end
+
 -- Full default profile without Macro Map. Future settings save separately in FyrelithDefaultSettings.
 local source=[=======[
 -- Keep this default profile independent from an already running custom profile.
@@ -27,7 +85,11 @@ local fyStorage=(function()
  local storage={Version=2,Cache='.FyrelithDefaultCache',Macros='FyrelithDefaultSettings/Macros',Moved=0,Errors=0,LegacyQueue=(existing and existing.LegacyQueue)or(env.FyrelithDefaultTeleportQueued==true and not env.FyrelithDefaultCacheQueueVersion)}
  env.FyrelithDefaultLoaderStorage=storage
  local function folder(path)
-  if type(native.Folder)=='function'and type(native.Make)=='function'then if not native.Folder(path)then native.Make(path)end else error('Executor folder support is required')end
+  pcall(function()
+   if type(native.Folder)=='function' and type(native.Make)=='function' then
+    if not native.Folder(path) then native.Make(path) end
+   end
+  end)
  end
  local ok=pcall(function()folder(storage.Cache);folder('FyrelithDefaultSettings');folder(storage.Macros)end)
  storage.Ready=ok
@@ -501,7 +563,7 @@ local function waitForFyrelithGame()
   local registry
   if debug and type(debug.getupvalues)=='function' then
    local ok,upvalues=pcall(debug.getupvalues,Loader.load_client_service)
-   if ok then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
+   if ok and type(upvalues)=='table' then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
   end
   local ready={} local complete=true
   if registry then
@@ -509,12 +571,16 @@ local function waitForFyrelithGame()
     ready[name]=entry and entry.module
     if type(ready[name])~='table' then complete=false break end
    end
-  elseif player:FindFirstChild('_stats') and player:FindFirstChild('_settings') then
-   -- Fallback for executors without upvalue inspection.
-   for _,name in ipairs(required) do local ok,value=pcall(Loader.load_client_service,module,name)
-    ready[name]=ok and value or nil if type(ready[name])~='table' then complete=false break end
+  else
+   -- Universal direct service loader fallback for Potassium and other executors
+   for _,name in ipairs(required) do
+    local ok,value=pcall(Loader.load_client_service,script,name)
+    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,module,name) end
+    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,name) end
+    ready[name]=ok and value or nil
+    if type(ready[name])~='table' then complete=false break end
    end
-  else complete=false end
+  end
   if complete then
    local U=ready.UnitCollectionServiceClient local E=ready.EndpointsClient local G=ready.GUIService
    if type(E.invoke_server)=='function' and E.session and G.session and U.session and U.session.profile_data and U.session.collection and U.session.inventory then
@@ -2190,7 +2256,7 @@ local function waitForFyrelithGame()
   local registry
   if debug and type(debug.getupvalues)=='function' then
    local ok,upvalues=pcall(debug.getupvalues,Loader.load_client_service)
-   if ok then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
+   if ok and type(upvalues)=='table' then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
   end
   local ready={} local complete=true
   if registry then
@@ -2198,12 +2264,16 @@ local function waitForFyrelithGame()
     ready[name]=entry and entry.module
     if type(ready[name])~='table' then complete=false break end
    end
-  elseif player:FindFirstChild('_stats') and player:FindFirstChild('_settings') then
-   -- Fallback for executors without upvalue inspection.
-   for _,name in ipairs(required) do local ok,value=pcall(Loader.load_client_service,module,name)
-    ready[name]=ok and value or nil if type(ready[name])~='table' then complete=false break end
+  else
+   -- Universal direct service loader fallback for Potassium and other executors
+   for _,name in ipairs(required) do
+    local ok,value=pcall(Loader.load_client_service,script,name)
+    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,module,name) end
+    if not ok or type(value)~='table' then ok,value=pcall(Loader.load_client_service,name) end
+    ready[name]=ok and value or nil
+    if type(ready[name])~='table' then complete=false break end
    end
-  else complete=false end
+  end
   if complete then
    local U=ready.UnitCollectionServiceClient local E=ready.EndpointsClient local G=ready.GUIService
    if type(E.invoke_server)=='function' and E.session and G.session and U.session and U.session.profile_data and U.session.collection and U.session.inventory then
