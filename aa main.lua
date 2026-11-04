@@ -1,3957 +1,2255 @@
--- FYRELITH latest build: fresh default-settings profile.
--- Saves stay in .FYRELITH-Default-20261104; your normal profile is preserved.
-local source=[======================[
--- Aurora presentation with the user's Fyrelith game-controller bundle.
-assert(type(getgenv)=='function' and type(loadstring)=='function','This integration requires the same client environment as the supplied Fyrelith script')
-local Hub=(function()
--- Script Hub / Roblox Luau / single-file LocalScript
--- Install: StarterPlayer > StarterPlayerScripts > LocalScript, paste this file.
--- Uses public Roblox image assets; no HTTP requests, code loaders, or executor APIs.
--- Edit CONFIG and the INTEGRATION section at the bottom to add your own tools.
--- Settings/favorites last for this UI session, not across game rejoins.
-
-local CONFIG = {
-    Title = "FYRELITH",
-    Wordmark = "YRELITH",
-    WordmarkImage = "rbxassetid://92178830461534",
-    Subtitle = "Your tools. Your workspace.",
-    Accent = Color3.fromRGB(182, 154, 255),
-    Scale = 1,
-    ToggleKey = Enum.KeyCode.RightShift,
-    ReducedMotion = false,
-    DimOpacity = 0.62, -- 0 = no dimming; 1 = fully dark backdrop.
-    WindowTransparency = 0,
-    CardTransparency = 0,
-    HeadingFont = Enum.Font.GothamBold,
-    BodyFont = Enum.Font.GothamMedium,
-    ButtonFont = Enum.Font.GothamMedium,
-    DisplayFace = Font.fromEnum(Enum.Font.GothamBold),
-    NumberFace = Font.fromEnum(Enum.Font.GothamBold),
-    BrandImage = "rbxassetid://92812415165705",
-}
-
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UIS = game:GetService("UserInputService")
-local TextService = game:GetService("TextService")
-local player = Players.LocalPlayer
-assert(player, "ScriptHub must run on the client, in a LocalScript.")
-local playerGui = player:WaitForChild("PlayerGui")
-
--- Re-running the script tears down the previous instance, including its events.
-local previous = playerGui:FindFirstChild("ModernScriptHub")
-if previous then previous:Destroy() end
-local oldBackdrop = playerGui:FindFirstChild("ModernScriptHubBackdrop")
-if oldBackdrop then oldBackdrop:Destroy() end
-
-local Hub = { Items = {}, Alive = true }
-local connections, cleanupTasks = {}, {}
-local themeBindings = setmetatable({}, { __mode = "k" })
-local gradientBindings = setmetatable({}, { __mode = "k" })
-local tweens = setmetatable({}, { __mode = "k" })
-local accent = CONFIG.Accent
-local userScale = math.clamp(CONFIG.Scale, 0.75, 1.3)
-local reducedMotion = CONFIG.ReducedMotion
-local page, category = "Scripts", "Auto Join"
-local favorites, navButtons = {}, {}
-local pageToken, toastToken, visibilityToken = 0, 0, 0
-local shown, compact, dragging, sliderDrag = true, false, nil, nil
-local refresh, layoutWindow, notify, updateStatus, renderNavigation
-local layoutDock, setDockOpen, updateDockSelection
-local toolLayout
-local drawIcon
-local colors = {
-    Background = Color3.fromRGB(8, 8, 9),
-    Dock = Color3.fromRGB(8, 8, 9),
-    Panel = Color3.fromRGB(15, 15, 18),
-    Raised = Color3.fromRGB(20, 20, 24),
-    Border = Color3.fromRGB(57, 55, 66),
-    Text = Color3.fromRGB(244, 242, 250),
-    Muted = Color3.fromRGB(170, 166, 185),
-    Green = Color3.fromRGB(113, 229, 162),
-}
-local function connect(signal, callback)
-    local connection = signal:Connect(callback)
-    table.insert(connections, connection)
-    return connection
+-- Full default profile without Macro Map. Future settings save separately in FyrelithDefaultSettings.
+local source=[=======[
+-- FYRELITH_EXECUTOR_COMPAT_V1
+-- Executor compatibility is scoped to Fyrelith chunks, never installed into global debug APIs.
+local E=getgenv()
+local nativeLoad=loadstring
+local nativeRequire=require
+local rawDebug=debug or{}
+local C={Errors={},Missing={},Version=1}
+E.FyrelithCompatibility=C
+local d={};for k,v in pairs(rawDebug)do d[k]=v end
+if type(d.getinfo)~='function'and type(d.info)=='function'then
+ d.getinfo=function(fn)local source,line,name=d.info(fn,'sln');return {source=source,short_src=source,currentline=line,name=name}end
 end
-local function make(class, parent, properties)
-    local object = Instance.new(class)
-    for key, value in pairs(properties or {}) do object[key] = value end
-    object.Parent = parent
-    return object
+if type(d.getupvalues)~='function'and type(getupvalues)=='function'then d.getupvalues=getupvalues end
+if type(d.setupvalue)~='function'and type(setupvalue)=='function'then d.setupvalue=setupvalue end
+if type(d.traceback)~='function'then d.traceback=function(err)return tostring(err)end end
+C.Debug=d
+-- Some executors run the caller at RobloxScript identity. Game data modules
+-- must be required at normal script identity; always restore the caller.
+local getIdentity=getthreadidentity or getidentity or(syn and syn.get_thread_identity)
+local setIdentity=setthreadidentity or setidentity or(syn and syn.set_thread_identity)
+local loaders=setmetatable({},{__mode='k'})
+function C.Require(module)
+ local value=nativeRequire(module)
+ if type(value)~='table'or type(value.load_data)~='function'then return value end
+ if loaders[value]then return loaders[value]end
+ local facade=setmetatable({load_data=false},{__index=value,__newindex=value})
+ facade.load_data=function(...)
+  local result=table.pack(pcall(value.load_data,...))
+  if result[1]then return table.unpack(result,2,result.n)end
+  if not tostring(result[2]):find('Cannot require a non%-RobloxScript module')then error(result[2],0)end
+  if type(getIdentity)~='function'or type(setIdentity)~='function'then error('Game data requires normal script identity; executor identity API is unavailable: '..tostring(result[2]),0)end
+  local before=getIdentity()
+  setIdentity(2)
+  local retried=table.pack(pcall(value.load_data,...))
+  local restored,restoreError=pcall(setIdentity,before)
+  if not restored then error('Could not restore executor identity: '..tostring(restoreError),0)end
+  if not retried[1]then error(retried[2],0)end
+  C.DataContextRetries=(C.DataContextRetries or 0)+1
+  return table.unpack(retried,2,retried.n)
+ end
+ loaders[value]=facade
+ return facade
 end
-local function round(object, radius)
-    local corner = object:FindFirstChildOfClass("UICorner")
-    if not corner then corner = make("UICorner", object, {}) end
-    corner.CornerRadius = UDim.new(0, radius or 12)
-    return corner
+function C.Report(name,err)
+ C.Errors[#C.Errors+1]={Module=name,Error=tostring(err)}
+ warn('Fyrelith ['..tostring(name)..']: '..tostring(err))
+ local player=game:GetService('Players').LocalPlayer
+ local parent=player and player:FindFirstChildOfClass('PlayerGui');if not parent then return end
+ local notice=parent:FindFirstChild('FyrelithStartupNotice')
+ if not notice then
+  notice=Instance.new('ScreenGui');notice.Name='FyrelithStartupNotice';notice.ResetOnSpawn=false;notice.DisplayOrder=2147483646
+  local label=Instance.new('TextBox');label.Name='Details';label.TextEditable=false;label.ClearTextOnFocus=false;label.TextWrapped=true;label.TextSize=14;label.TextColor3=Color3.fromRGB(255,225,225);label.BackgroundColor3=Color3.fromRGB(30,18,24);label.BackgroundTransparency=.1;label.Size=UDim2.new(.8,0,0,115);label.Position=UDim2.new(.1,0,0,20);label.Parent=notice;notice.Parent=parent
+ end
+ notice.Details.Text='Fyrelith could not load '..tostring(name)..'\n'..tostring(err)..'\nCopy this message when reporting the problem.'
 end
-local function stroke(object, color)
-    return make("UIStroke", object, { Enabled = false, Color = color or colors.Border, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
-end
-local function tween(object, properties, duration, easing)
-    if not Hub.Alive or not object.Parent then return end
-    -- Cancel only conflicting property tweens, preserving unrelated animations.
-    local active = tweens[object] or {}
-    tweens[object] = active
-    for property in pairs(properties) do
-        if active[property] then active[property]:Cancel() end
-    end
-    if reducedMotion or duration == 0 then
-        for property, value in pairs(properties) do object[property] = value end
-        return
-    end
-    local animation = TweenService:Create(object, TweenInfo.new(duration or 0.2, easing or Enum.EasingStyle.Quint, Enum.EasingDirection.Out), properties)
-    for property in pairs(properties) do active[property] = animation end
-    animation:Play()
-end
-local function themed(object, property, resolver)
-    local bindings = themeBindings[object] or {}
-    themeBindings[object] = bindings
-    if object:GetAttribute("GradientForeground") and (property == "TextColor3" or property == "ImageColor3") then
-        resolver = function() return Color3.new(1, 1, 1) end
-    end
-    bindings[property] = resolver
-    object[property] = resolver()
-end
-local function gradientColors(muted)
-    local white = Color3.fromRGB(251, 249, 255)
-    local start = accent:Lerp(white, muted and 0.48 or 0.12)
-    return ColorSequence.new({
-        ColorSequenceKeypoint.new(0, start),
-        ColorSequenceKeypoint.new(0.55, accent:Lerp(white, 0.65)),
-        ColorSequenceKeypoint.new(1, white),
-    })
-end
-local function gradient(object, muted)
-    local paint = make("UIGradient", object, { Name = "ThemeGradient", Color = gradientColors(muted), Rotation = 0 })
-    gradientBindings[paint] = muted == true
-    object:SetAttribute("GradientForeground", true)
-    if object:IsA("ImageLabel") then object.ImageColor3 = Color3.new(1, 1, 1)
-    elseif object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-        object.TextColor3 = Color3.new(1, 1, 1)
-    end
-    return paint
-end
-local function softAccent() return colors.Raised end
-function Hub:StyleSurface(object,kind)
-    -- A gradient on CanvasGroup also tints its rendered children; keep text unaffected.
-    if object:IsA('CanvasGroup')then object.BackgroundColor3=colors.Panel;object.BackgroundTransparency=0;return end
-    local old=object:FindFirstChild('ThemeGradient');if old then old.Enabled=false end
-    local paint=object:FindFirstChild('SurfaceGradient')or make('UIGradient',object,{Name='SurfaceGradient',Rotation=90})
-    object.BackgroundColor3=Color3.new(1,1,1)
-    themed(paint,'Color',function()
-        if object:IsA('TextButton')or object:IsA('TextBox')then return ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(205,205,205))end
-        local top,bottom
-        if kind=='action'then top=Color3.fromRGB(64,51,78):Lerp(accent,.12);bottom=Color3.fromRGB(35,28,44)
-        elseif kind=='panel'then top=colors.Panel;bottom=top
-        elseif kind=='header'then top=colors.Raised;bottom=top
-        else top=colors.Raised;bottom=top end
-        return ColorSequence.new(top,bottom)
-    end)
-    local edge=object:FindFirstChild('SurfaceEdge')or make('UIStroke',object,{Name='SurfaceEdge',Thickness=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-    edge.Color=Color3.fromRGB(180,175,190);edge.Transparency=kind=='panel'and .94 or .93
-    if not edge:FindFirstChildOfClass('UIGradient')then
-        make('UIGradient',edge,{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.12),NumberSequenceKeypoint.new(.45,.72),NumberSequenceKeypoint.new(1,.93)})})
-    end
-    if object:IsA('TextButton')or object:IsA('TextBox')then
-        themed(object,'BackgroundColor3',function()return kind=='action'and Color3.fromRGB(64,51,78):Lerp(accent,.10)or colors.Raised end)
-        object:SetAttribute('GradientForeground',false)
-        themed(object,'TextColor3',function()return Color3.fromRGB(244,241,251)end)
-    end
-end
-local function accentBorder() return colors.Border:Lerp(accent, 0.28) end
-function Hub:SkinToggle(control,initial)
-    control:SetAttribute('ControlStyle','IrisPearlSwitch')
-    control.Text='';round(control,16)
-    local old=control:FindFirstChildOfClass('UIGradient');if old then old.Enabled=false end
-    make('UIGradient',control,{Name='SwitchSurface',Rotation=90,Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(196,196,208))})
-    local rim=make('UIStroke',control,{Thickness=1,Color=Color3.fromRGB(116,103,142),Transparency=.8,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-    local activeRail=make('Frame',control,{Name='IrisRail',Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,BorderSizePixel=0});round(activeRail,16)
-    local iris=make('UIGradient',activeRail,{Name='IrisGradient',Rotation=18})
-    themed(iris,'Color',function()return ColorSequence.new({ColorSequenceKeypoint.new(0,accent:Lerp(Color3.fromRGB(84,48,147),.65)),ColorSequenceKeypoint.new(.53,Color3.fromRGB(112,88,191)),ColorSequenceKeypoint.new(1,Color3.fromRGB(74,100,166))})end)
-    local reflection=make('Frame',activeRail,{Name='RailReflection',Position=UDim2.fromOffset(8,2),Size=UDim2.new(1,-16,0,1),BackgroundColor3=Color3.fromRGB(221,211,255),BackgroundTransparency=1,BorderSizePixel=0});round(reflection,2)
-    make('UIGradient',reflection,{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.45,.2),NumberSequenceKeypoint.new(1,1)})})
-    local shadow=make('Frame',control,{Name='KnobShadow',AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(22,22),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=.66,BorderSizePixel=0});round(shadow,12)
-    local thumb=make('Frame',control,{Name='SwitchKnob',AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(20,20),BackgroundColor3=Color3.fromRGB(245,242,252),BorderSizePixel=0});round(thumb,10)
-    make('UIGradient',thumb,{Rotation=65,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(255,254,255)),ColorSequenceKeypoint.new(.52,Color3.fromRGB(234,231,250)),ColorSequenceKeypoint.new(1,Color3.fromRGB(179,188,220))})})
-    local thumbEdge=make('UIStroke',thumb,{Thickness=1,Color=Color3.fromRGB(249,244,255),Transparency=.65,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-    make('UIGradient',thumbEdge,{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,1)})})
-    local knobScale=make('UIScale',thumb,{Scale=1})
-    local state,painted,hovered=initial==true,false,false
-    local function railColor()return Color3.fromRGB(30,29,37)end
-    themed(control,'BackgroundColor3',railColor)
-    local function update(value,instant)
-        local nextState=value==true
-        local changed=painted and state~=nextState
-        state=nextState;painted=true;control:SetAttribute('SwitchState',state)
-        local duration=instant and 0 or .3
-        local x=state and 40 or 14
-        tween(thumb,{Position=UDim2.fromOffset(x,14)},duration,Enum.EasingStyle.Quint)
-        tween(shadow,{Position=UDim2.fromOffset(x,15)},duration,Enum.EasingStyle.Quint)
-        tween(control,{BackgroundColor3=railColor()},duration)
-        tween(activeRail,{BackgroundTransparency=state and .04 or 1},duration)
-        tween(reflection,{BackgroundTransparency=state and .54 or 1},duration)
-        tween(iris,{Offset=Vector2.new(state and .06 or -.12,0)},duration)
-        tween(thumb,{BackgroundColor3=state and Color3.new(1,1,1)or Color3.fromRGB(220,219,230)},duration)
-        tween(rim,{Transparency=hovered and .44 or(state and .64 or .84)},duration)
-        if changed and not reducedMotion and not instant then
-            knobScale.Scale=.94
-            tween(knobScale,{Scale=1},.3,Enum.EasingStyle.Back)
-        end
-    end
-    control.MouseEnter:Connect(function()hovered=true;tween(rim,{Transparency=.44},.18)end)
-    control.MouseLeave:Connect(function()hovered=false;tween(rim,{Transparency=state and .64 or .84},.24)end)
-    update(state,true)
-    return update
+local prefix='local __c=getgenv().FyrelithCompatibility;local debug=__c.Debug;local loadstring=__c.Load;local require=__c.Require;\n'
+function C.Load(source,name)
+ local fn,err=nativeLoad(prefix..source,name)
+ if not fn then return nil,err end
+ if type(name)=='string'and name:find('Fyrelith',1,true)then
+  return function(...)
+   local result=table.pack(xpcall(fn,d.traceback,...))
+   if not result[1]then C.Report(name,result[2]);return end
+   return table.unpack(result,2,result.n)
+  end
+ end
+ return fn
 end
 
-local function label(parent, text, size, position, dimensions, muted)
-    local textLabel = make("TextLabel", parent, {
-        BackgroundTransparency = 1, Text = text, Font = (muted or (size or 16) < 20) and CONFIG.BodyFont or CONFIG.HeadingFont,
-        TextSize = math.max(size or 16, 14), TextColor3 = muted and Color3.fromRGB(225, 225, 233) or colors.Text,
-        TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
-        Position = position or UDim2.new(), Size = dimensions or UDim2.fromScale(1, 1),
-        TextTruncate = Enum.TextTruncate.AtEnd,
-    })
-    textLabel.FontFace = not muted and (size or 16) >= 20 and CONFIG.DisplayFace or Font.fromEnum(CONFIG.BodyFont)
-    textLabel:SetAttribute("TypographyRole", muted and "Body" or ((size or 16) >= 20 and "Display" or "Heading"))
-    if not muted and (size or 16) >= 20 then gradient(textLabel, false) end
-    return textLabel
-end
-local function button(parent,text,position,dimensions,manualMotion)
-    if (UIS.TouchEnabled or Hub.TouchPreview)and text~=''and dimensions and dimensions.Y.Scale==0 and dimensions.Y.Offset<44 then
-        dimensions=UDim2.new(dimensions.X.Scale,dimensions.X.Offset,0,44)
-    end
-    local b = make("TextButton", parent, {
-        Text = text, Font = CONFIG.ButtonFont, TextSize = 16,
-        TextColor3 = colors.Text, BackgroundColor3 = colors.Raised,
-        AutoButtonColor = false, BorderSizePixel = 0,
-        Position = position or UDim2.new(), Size = dimensions or UDim2.fromOffset(100, 40),
-        ClipsDescendants = true,
-    })
-    round(b, 12)
-    gradient(b)
-    local scale = make("UIScale", b, { Scale = 1 })
-    if manualMotion then return b end
-    -- Shape-free press feedback: no expanding Frames or white flash overlays.
-    local hovering, pressed = false, false
-    local releaseWatch
-    local function feedback()
-        if not b.Active then
-            hovering,pressed=false,false
-            tween(scale,{Scale=1},.18)
-            return
-        end
-        local target = pressed and .975 or (hovering and 1.012 or 1)
-        tween(scale, { Scale = reducedMotion and 1 or target }, pressed and .12 or .26, Enum.EasingStyle.Quint)
-        tween(b, { TextTransparency = pressed and .12 or 0 }, pressed and .1 or .22)
-    end
-    local function release()
-        if releaseWatch then releaseWatch:Disconnect(); releaseWatch = nil end
-        pressed = false
-        feedback()
-    end
-    b.MouseEnter:Connect(function() hovering = true; feedback() end)
-    b.MouseLeave:Connect(function() hovering = false; release() end)
-    b.InputBegan:Connect(function(input)
-        if not b.Active then return end
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        if releaseWatch then releaseWatch:Disconnect() end
-        pressed = true; feedback()
-        releaseWatch = input:GetPropertyChangedSignal("UserInputState"):Connect(function()
-            if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then release() end
-        end)
-    end)
-    b.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then release() end
-    end)
-    b.SelectionGained:Connect(function() hovering = true; feedback() end)
-    b.SelectionLost:Connect(function() hovering = false; release() end)
-    b.Destroying:Once(function() if releaseWatch then releaseWatch:Disconnect(); releaseWatch = nil end end)
-    return b
-end
-local function box(parent, placeholder, pos, size)
-    local b = make("TextBox", parent, {
-        Position = pos, Size = size, BackgroundColor3 = colors.Panel, BorderSizePixel = 0,
-        Text = "", PlaceholderText = placeholder, PlaceholderColor3 = colors.Muted,
-        ClearTextOnFocus = false, Font = CONFIG.BodyFont, TextSize = 16,
-        TextColor3 = colors.Text, TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Center, TextWrapped = false,
-        MultiLine = false, TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true,
-    })
-    round(b, 11)
-    gradient(b)
-    make("UIPadding", b, { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) })
-    local border = stroke(b)
-    b.Focused:Connect(function() b.TextTruncate=Enum.TextTruncate.None;tween(border, { Color = accent }, 0.15) end)
-    b.FocusLost:Connect(function()
-        b.TextTruncate=Enum.TextTruncate.AtEnd;b.CursorPosition=-1;b.SelectionStart=-1
-        tween(border, { Color = colors.Border }, 0.2)
-    end)
-    return b
-end
-
-local screen = make("ScreenGui", playerGui, {
-    Name = "ModernScriptHub", ResetOnSpawn = false, IgnoreGuiInset = false,
-    DisplayOrder = 100, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-})
-local root = make("Frame", screen, { Name = "Root", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 })
--- Independent full-screen layer: the main window keeps its safe-area layout.
-local backdropScreen = make("ScreenGui", playerGui, {
-    Name = "ModernScriptHubBackdrop", ResetOnSpawn = false,
-    IgnoreGuiInset = true, DisplayOrder = screen.DisplayOrder - 1,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-})
-local backdrop = make("Frame", backdropScreen, {
-    Name = "Backdrop", Size = UDim2.fromScale(1, 1),
-    BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1,
-    BorderSizePixel = 0, Visible = false, ZIndex = 0,
-})
-local windowShadow = make("CanvasGroup", root, {
-    Name = "WindowShadow", AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(980, 740),
-    BackgroundTransparency = 1, GroupTransparency = 1, Visible = false, ZIndex = 0,
-})
-local shadowScale = make("UIScale", windowShadow, { Scale = 1 })
--- Neutral, layered drop shadow; no colored outline and no large-area gradient.
-for layer = 10, 1, -1 do
-    local spread = layer * 3
-    local shade = make("Frame", windowShadow, {
-        Name = "SoftShadow", AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, 9),
-        Size = UDim2.new(1, -80 + spread * 2, 1, -80 + spread * 2),
-        BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.945,
-        BorderSizePixel = 0, ZIndex = 0,
-    })
-    round(shade, 24 + spread)
-end
-local window = make("CanvasGroup", root, {
-    Name = "Window", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-    Size = UDim2.fromOffset(900, 620), BackgroundColor3 = colors.Background,
-    BorderSizePixel = 0, GroupTransparency = 1,
-    BackgroundTransparency = math.clamp(CONFIG.WindowTransparency, 0, 0.4),
-})
-round(window, 24)
-Hub:StyleSurface(window,'panel')
-window.BackgroundColor3=colors.Dock
-window.BackgroundTransparency=0
-window.Active=true
-local windowBorder = stroke(window)
-themed(windowBorder, "Color", function() return colors.Border:Lerp(accent, 0.18) end)
-local windowScale = make("UIScale", window, { Scale = 1 })
-local fittedWindowScale,windowTopInset=1,0
-local entrance = make("NumberValue", screen, { Value = 1 })
-local motionOffset = make("NumberValue", screen, { Value = 0 })
-local expansion = make("NumberValue", screen, { Name = "HeightExpansion", Value = 0 })
-local expanded = false
-local titlebar = make("Frame", window, { Name = "Titlebar", Size = UDim2.new(1, 0, 0, 76), BackgroundTransparency = 1, Active = true })
-local titleSurface = make("Frame", titlebar, { Name = "TitleSurface", Position = UDim2.fromOffset(12, 10), Size = UDim2.new(1, -24, 0, 56), BackgroundColor3 = Color3.fromRGB(17, 17, 21), BorderSizePixel = 0 })
-round(titleSurface, 18)
-Hub:StyleSurface(titleSurface,'header')
-local logo = label(titlebar, "S", 30, UDim2.fromOffset(24, 14), UDim2.fromOffset(35, 40))
-themed(logo, "TextColor3", function() return accent end)
-local brand = label(titlebar, CONFIG.Wordmark, 20, UDim2.fromOffset(60, 22), UDim2.fromOffset(124, 32))
-brand.Name = "BrandTitle"
-brand.Visible = false
-local headerWordmark = make("ImageLabel", titlebar, {
-    Name = "HeaderWordmark", BackgroundTransparency = 1,
-    Image = CONFIG.WordmarkImage, ScaleType = Enum.ScaleType.Fit,
-    ImageColor3 = Color3.new(1, 1, 1),
-    Position = UDim2.fromOffset(24, 15), Size = UDim2.fromOffset(138, 46),
-})
-local brandWidths = {}
-task.spawn(function()
-    for _, size in ipairs({16, 20}) do
-        local parameters = Instance.new("GetTextBoundsParams")
-        parameters.Text, parameters.Font, parameters.Size, parameters.Width = CONFIG.Wordmark, CONFIG.DisplayFace, size, 1000
-        local ok, bounds = pcall(TextService.GetTextBoundsAsync, TextService, parameters)
-        parameters:Destroy()
-        if ok then brandWidths[size] = bounds.X end
-    end
-    if Hub.Alive and layoutWindow then layoutWindow() end
-end)
-local sectionChip = make("Frame", titlebar, { Name = "SectionChip", Position = UDim2.fromOffset(190, 19), Size = UDim2.fromOffset(100, 38), BackgroundTransparency = 1, BorderSizePixel = 0 })
-local sectionSlash = label(sectionChip, "/", 26, UDim2.fromOffset(0, 0), UDim2.fromOffset(18, 32))
-sectionSlash.Name = "CategorySlash"
-themed(sectionSlash, "TextColor3", function() return accent end)
-local sectionTitle = label(sectionChip, "Main", 16, UDim2.fromOffset(26, 0), UDim2.new(1, -30, 0, 32))
-local sectionUnderline = make("Frame", sectionChip, { Name = "CategoryUnderline", Position = UDim2.fromOffset(26, 33), Size = UDim2.fromOffset(26, 3), BorderSizePixel = 0 })
-round(sectionUnderline, 3)
-themed(sectionUnderline, "BackgroundColor3", function() return accent end)
-sectionTitle:SetAttribute("GradientForeground", false)
-local sectionTextPaint = sectionTitle:FindFirstChild("ThemeGradient")
-if sectionTextPaint then sectionTextPaint.Enabled = false end
-themed(sectionTitle, "TextColor3", function() return Color3.fromRGB(247, 244, 255) end)
-sectionTitle.Name = "SectionTitle"
-local windowControls = make("Frame", titlebar, { Name = "WindowControls", Position = UDim2.new(1, -108, 0, 16), Size = UDim2.fromOffset(88, 44), BackgroundColor3 = Color3.fromRGB(23, 23, 27), BorderSizePixel = 0 })
-round(windowControls, 14)
-local hideButton = button(windowControls, "", UDim2.fromOffset(5, 5), UDim2.fromOffset(34, 34))
-local closeButton = button(windowControls, "", UDim2.fromOffset(49, 5), UDim2.fromOffset(34, 34))
-hideButton.BackgroundTransparency, closeButton.BackgroundTransparency = 1, 1
-hideButton.Name, closeButton.Name = "Hide", "Close"
-local topLine = make("Frame", window, { Position = UDim2.fromOffset(26, 75), Size = UDim2.new(1, -52, 0, 1), BackgroundColor3 = colors.Border, BackgroundTransparency = 0.25, BorderSizePixel = 0 })
-topLine.Visible = false
-gradient(topLine)
-local sidebar = make("Frame", window, { Position = UDim2.fromOffset(0, 69), Size = UDim2.new(0, 180, 1, -113), BackgroundTransparency = 1 })
-local navMarker = make("Frame", sidebar, { Position = UDim2.fromOffset(10, 68), Size = UDim2.fromOffset(3, 44), BorderSizePixel = 0, ZIndex = 3 })
-round(navMarker, 3)
-themed(navMarker, "BackgroundColor3", function() return accent end)
-local profile = label(sidebar, "●  " .. player.DisplayName, 13, UDim2.new(0, 20, 1, -48), UDim2.new(1, -34, 0, 30), true)
-local divider = make("Frame", window, { Position = UDim2.fromOffset(180, 69), Size = UDim2.new(0, 1, 1, -113), BackgroundColor3 = colors.Border, BorderSizePixel = 0 })
-local main = make("Frame", window, { Position = UDim2.fromOffset(181, 69), Size = UDim2.new(1, -181, 1, -113), BackgroundTransparency = 1 })
-main.Name, sidebar.Name = "Main", "Sidebar"
-main.BackgroundColor3, main.BackgroundTransparency = colors.Dock, 0
-round(main, 18)
--- Bounded ambient dust: decorative only, with one shared update connection.
+local debug=C.Debug
+local loadstring=C.Load
+local require=C.Require
+-- Keep this default profile independent from an already running custom profile.
 do
-    local dust = make("Frame", main, {
-        Name = "AmbientParticles", Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1, ClipsDescendants = true,
-        Active = false, Selectable = false, ZIndex = 2,
-    })
-    round(dust, 18)
-    local random = Random.new(7841)
-    local particles = {}
-    for index = 1, 26 do
-        local size = random:NextNumber(3.5, 6)
-        local dot = make("Frame", dust, {
-            Name = "Dust", AnchorPoint = Vector2.new(.5, .5),
-            Size = UDim2.fromOffset(size, size), BorderSizePixel = 0,
-            BackgroundTransparency = 1, Active = false, ZIndex = 2,
-        })
-        round(dot, 8)
-        themed(dot, "BackgroundColor3", function() return Color3.new(1, 1, 1) end)
-        local halos = {}
-        for layer = 4, 1, -1 do
-            local halo = make("Frame", dot, {
-                Name = "ParticleGlow", AnchorPoint = Vector2.new(.5,.5), Position = UDim2.fromScale(.5,.5),
-                Size = UDim2.fromOffset(size*(1.45+layer*.45), size*(1.45+layer*.45)),
-                BorderSizePixel = 0, BackgroundTransparency = 1, Active = false, ZIndex = 2,
-            })
-            round(halo, 50)
-            themed(halo, "BackgroundColor3", function() return Color3.fromRGB(240,240,248)end)
-            halos[#halos+1] = {Object=halo, Gain=.028*(1-(layer-1)/5)}
-        end
-        particles[index] = { Dot = dot, Halos = halos, X = random:NextNumber(.025, .975),
-            Phase = random:NextNumber(), Duration = random:NextNumber(36, 56),
-            Sway = random:NextNumber(0, math.pi * 2), Brightness = random:NextNumber(.22, .34) }
-    end
-    local elapsed, reveal = 0, 0
-    dust:SetAttribute("ParticleStyle", "SoftDrift")
-    connect(game:GetService("RunService").RenderStepped, function(dt)
-        local visible = shown and screen.Enabled and window.Visible and not reducedMotion
-        dust.Visible = visible
-        if not visible then reveal=0;return end
-        local step=math.min(dt,.05)
-        elapsed += step
-        reveal += (1-reveal)*(1-math.exp(-step*5))
-        for _, particle in ipairs(particles) do
-            local phase = (particle.Phase + elapsed / particle.Duration) % 1
-            local envelope = math.clamp(math.min(phase, 1 - phase) * 5, 0, 1)
-            local fade = envelope*envelope*(3-2*envelope)*reveal
-            particle.Dot.Position = UDim2.fromScale(
-                particle.X + math.sin(elapsed * .09 + particle.Sway) * .009,
-                1.04 - phase * 1.08 + math.sin(elapsed*.07+particle.Sway)*.003)
-            particle.Dot.BackgroundTransparency = 1 - fade * particle.Brightness
-            for _,halo in ipairs(particle.Halos)do halo.Object.BackgroundTransparency = 1-fade*particle.Brightness*halo.Gain end
-        end
-    end)
-end
-local filters = make("Frame", main, { Position = UDim2.fromOffset(24, 172), Size = UDim2.new(1, -48, 0, 34), BackgroundTransparency = 1 })
-make("UIListLayout", filters, { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
-local content = make("CanvasGroup", main, { Position = UDim2.fromOffset(24, 20), Size = UDim2.new(1, -48, 1, -32), BackgroundTransparency = 1 })
-local scroll = make("ScrollingFrame", content, {
-    Name = "Content", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
-    ScrollBarThickness = 3, ScrollBarImageColor3 = colors.Muted, CanvasSize = UDim2.new(),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y,
-})
-make("UIPadding", scroll, { PaddingTop = UDim.new(0, 3), PaddingLeft = UDim.new(0, 3), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 12) })
-local list = make("UIListLayout", scroll, { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder })
-local footer = make("Frame", window, { Position = UDim2.new(0, 0, 1, -40), Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = colors.Background, BorderSizePixel = 0 })
-footer.BackgroundTransparency = 0
-footer.BackgroundColor3 = colors.Dock
-make("Frame", footer, { Position = UDim2.fromOffset(26, 0), Size = UDim2.new(1, -52, 0, 1), BackgroundColor3 = colors.Border, BackgroundTransparency = 0.4, BorderSizePixel = 0 })
-local statusDot=make('Frame',footer,{Name='HealthDot',Position=UDim2.new(0,24,.5,-3),Size=UDim2.fromOffset(6,6),BackgroundColor3=Color3.fromRGB(104,215,151),BorderSizePixel=0});round(statusDot,6)
-local status = label(footer, "Ready", 12, UDim2.fromOffset(38, 0), UDim2.new(0.6, -38, 1, 0), true)
-status.Name='HealthStatus'
-local keyHint = label(footer, CONFIG.ToggleKey.Name .. " to toggle", 11, UDim2.fromScale(0.6, 0), UDim2.new(0.4, -24, 1, 0), true)
-keyHint.TextXAlignment = Enum.TextXAlignment.Right
-local expandButton = make("TextButton", footer, {
-    Name = "ExpandWindow", AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(84, 32),
-    Text = "", BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false,
-})
-local expandHandle = make("Frame", expandButton, {
-    Name = "Handle", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-    Size = UDim2.fromOffset(36, 4), BackgroundColor3 = Color3.fromRGB(245, 245, 250),
-    BorderSizePixel = 0, BackgroundTransparency = 0.15,
-})
-round(expandHandle, 99)
-local handleHovered = false
-local function updateExpandHandle()
-    tween(expandHandle, {
-        Size = UDim2.fromOffset(handleHovered and 48 or (expanded and 44 or 36), 4),
-        BackgroundTransparency = handleHovered and 0 or 0.15,
-    }, 0.2)
-end
-expandButton.MouseEnter:Connect(function() handleHovered = true; updateExpandHandle() end)
-expandButton.MouseLeave:Connect(function() handleHovered = false; updateExpandHandle() end)
-expandButton.Activated:Connect(function()
-    expanded = not expanded
-    expandButton:SetAttribute("Expanded", expanded)
-    updateExpandHandle()
-    tween(expansion, { Value = expanded and 1 or 0 }, 0.4)
-end)
-local reopen = button(root, "S  /  Open Hub", UDim2.new(0, 16, 1, -58), UDim2.fromOffset(150, 42))
-reopen.Visible = false
-stroke(reopen)
-themed(reopen, "TextColor3", function() return accent end)
-local toast = make("CanvasGroup", window, { Name = "Toast", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -56), Size = UDim2.new(1, -48, 0, 48), BackgroundColor3 = colors.Raised, GroupTransparency = 1, Visible = false, ZIndex = 20 })
-round(toast, 12)
-stroke(toast)
-local toastText = label(toast, "", 14, UDim2.fromOffset(14, 0), UDim2.new(1, -28, 1, 0))
-toastText.ZIndex = 21
-toastText.TextXAlignment = Enum.TextXAlignment.Center
-
-notify = function(text)
-    if not Hub.Alive then return end
-    toastToken = toastToken + 1
-    local token = toastToken
-    toastText.Text = tostring(text)
-    toast.Visible = true
-    toast.Position = UDim2.new(0.5, 0, 1, -48)
-    tween(toast, { GroupTransparency = 0, Position = UDim2.new(0.5, 0, 1, -58) }, 0.24)
-    task.delay(3, function()
-        if not Hub.Alive or token ~= toastToken then return end
-        tween(toast, { GroupTransparency = 1, Position = UDim2.new(0.5, 0, 1, -48) }, 0.2)
-        task.delay(0.22, function() if Hub.Alive and token == toastToken then toast.Visible = false end end)
-    end)
-end
-function Hub:Notify(text) notify(text) end
-function Hub:OnCleanup(callback) table.insert(cleanupTasks, callback) end
-
-local function cancelSlider()
-    if sliderDrag then
-        local active = sliderDrag
-        sliderDrag = nil
-        if active.Finish then active.Finish() end
-    end
-end
-local function clearContent()
-    if Hub.CloseInlineChoices then Hub:CloseInlineChoices(true)end
-    cancelSlider()
-    for _, child in ipairs(scroll:GetChildren()) do
-        if child:IsA("GuiObject") then child:Destroy() end
-    end
-    if not Hub.PreserveContentScroll then scroll.CanvasPosition = Vector2.zero end
-end
-local function frameRow(height)
-    local row = make("CanvasGroup", scroll, { Size = UDim2.new(1, -2, 0, height), BackgroundColor3 = colors.Panel, BorderSizePixel = 0, BackgroundTransparency = math.clamp(CONFIG.CardTransparency, 0, 0.4) })
-    round(row, 18)
-    local lip = make("Frame", row, {
-        Name = "SurfaceLight", Visible = false, Position = UDim2.fromOffset(18, 0),
-        Size = UDim2.new(1, -36, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1),
-        BackgroundTransparency = 0.9, BorderSizePixel = 0,
-    })
-    make("UIGradient", lip, { Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.25, 0.25),
-        NumberSequenceKeypoint.new(0.75, 0.25), NumberSequenceKeypoint.new(1, 1),
-    }) })
-    local border = stroke(row)
-    border.Transparency = 0.15
-    row.MouseEnter:Connect(function()
-        tween(row, { BackgroundColor3 = Color3.fromRGB(28, 28, 31) }, 0.22)
-        tween(lip, { BackgroundTransparency = 0.8 }, 0.22)
-    end)
-    row.MouseLeave:Connect(function()
-        tween(row, { BackgroundColor3 = colors.Panel }, 0.28)
-        tween(lip, { BackgroundTransparency = 0.9 }, 0.28)
-    end)
-    return row
-end
-local function pill(parent, text, pos, size)
-    local b = button(parent, text, pos, size)
-    b:SetAttribute("GradientForeground", false)
-    b:SetAttribute("ControlStyle", "GraphiteLayered02")
-    local old=b:FindFirstChild('ThemeGradient');if old then old.Enabled=false end
-    round(b,10)
-    b.Font=CONFIG.ButtonFont;b.TextSize=15;b.TextXAlignment=Enum.TextXAlignment.Center
-    b.TextTruncate=Enum.TextTruncate.AtEnd
-    themed(b,'TextColor3',function()return Color3.fromRGB(246,243,252)end)
-    local restingColor=Color3.fromRGB(33,33,36)
-    themed(b,'BackgroundColor3',function()return restingColor end)
-    make('UIGradient',b,{Name='GraphiteSurface',Rotation=90,Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(164,164,174))})
-    local inset=make('Frame',b,{Name='InsetRim',Position=UDim2.fromOffset(2,2),Size=UDim2.new(1,-4,1,-5),BackgroundTransparency=1,BorderSizePixel=0});round(inset,8)
-    local rim=make('UIStroke',inset,{Thickness=1,Color=Color3.fromRGB(160,151,178),Transparency=.64,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-    make('UIGradient',rim,{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.1),NumberSequenceKeypoint.new(.4,.75),NumberSequenceKeypoint.new(1,1)})})
-    local hovered,pressed=false,false
-    local function paint()
-        tween(b,{BackgroundColor3=pressed and Color3.fromRGB(27,27,31)or(hovered and Color3.fromRGB(43,42,49)or restingColor)},pressed and .1 or .25)
-        tween(inset,{Position=UDim2.fromOffset(2,pressed and 3 or 2)},pressed and .1 or .24)
-        tween(rim,{Transparency=pressed and .8 or(hovered and .42 or .64)},.2)
-    end
-    b.MouseEnter:Connect(function()hovered=true;paint()end)
-    b.MouseLeave:Connect(function()hovered=false;pressed=false;paint()end)
-    b.Activated:Connect(function()hovered=false;pressed=false;paint()end)
-    b.InputBegan:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then pressed=true;paint()end end)
-    b.InputEnded:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then pressed=false;paint()end end)
-    return b
-end
-
-function Hub:SetTheme(color)
-    assert(typeof(color) == "Color3", "SetTheme expects a Color3")
-    -- Extremely dark accents lose contrast, so lift them to a readable minimum.
-    local maxChannel = math.max(color.R, color.G, color.B)
-    accent = maxChannel < 0.55 and color:Lerp(Color3.new(1, 1, 1), 0.55 - maxChannel) or color
-    for paint, muted in pairs(gradientBindings) do
-        if paint.Parent then paint.Color = gradientColors(muted) end
-    end
-    for object, properties in pairs(themeBindings) do
-        if object.Parent then
-            local values = {}
-            for property, resolver in pairs(properties) do values[property] = resolver() end
-            tween(object, values, 0.25)
-        end
-    end
-    if renderNavigation then renderNavigation() end
-end
-function Hub:SetScale(value)
-    userScale = math.clamp(tonumber(value) or 1, 0.75, 1.3)
-    if layoutWindow then layoutWindow() end
-end
-
-local function runItem(item, value, onComplete, context)
-    if item.Busy or not Hub.Alive then return end
-    item.Busy = true
-    updateStatus()
-    task.spawn(function()
-        local ok, message = xpcall(function()
-            if item.Callback then item.Callback(value, context or Hub) end
-        end, debug.traceback)
-        if not Hub.Alive then return end
-        item.Busy = false
-        item.LastError=not ok and tostring(message)or nil
-        if item.UpdateView then item.UpdateView() end
-        if not ok then
-            warn("[ScriptHub] " .. item.Name .. ": " .. tostring(message))
-            notify(item.Name .. " failed. Check the Output window.")
-        end
-        if onComplete then onComplete(ok) end
-        updateStatus()
-    end)
-end
-updateStatus = function()
-    if not Hub.Alive then return end
-    local busy, enabled, issues = 0, 0, 0
-    for _, item in ipairs(Hub.Items) do
-        if item.Busy then busy = busy + 1 end
-        if item.Kind == "Toggle" and item.Value then enabled = enabled + 1 end
-        if item.LastError then issues+=1 end
-    end
-    local state=Hub.ConnectionState or 'ready'
-    local failed=state=='stopped'
-    local warning=issues>0 or state=='warning'or state=='connecting'
-    local color=failed and Color3.fromRGB(238,91,105)or(warning and Color3.fromRGB(239,194,83)or Color3.fromRGB(104,215,151))
-    tween(statusDot,{BackgroundColor3=color},.2)
-    statusDot:SetAttribute('State',failed and 'red'or(warning and 'yellow'or'green'))
-    status.Text=failed and 'Not connected'or(state=='connecting'and 'Connecting...'or(busy>0 and('Working · '..busy)or(enabled>0 and(enabled..' tools enabled')or'Ready')))
-end
-function Hub:SetHealth(state)self.ConnectionState=state;updateStatus()end
-
--- One shared input listener handles all sliders (no listener per rebuild).
-local function slider(parent, y, minimum, maximum, value, step, setter, finished)
-    local track = make("Frame", parent, { Position = UDim2.new(0, 18, 0, y), Size = UDim2.new(1, -36, 0, 6), BackgroundColor3 = colors.Raised, BorderSizePixel = 0 })
-    round(track, 4)
-    local fill = make("Frame", track, { Size = UDim2.fromScale(0, 1), BorderSizePixel = 0 })
-    round(fill, 4)
-    fill.BackgroundColor3 = Color3.new(1, 1, 1)
-    gradient(fill)
-    local knob = make("Frame", track, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = colors.Text, BorderSizePixel = 0, ZIndex = 3 })
-    round(knob, 16)
-    local hit = make("TextButton", track, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(1, 0, 0, (UIS.TouchEnabled or Hub.TouchPreview)and 44 or 34), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 4 })
-    local knobScale = make("UIScale", knob, { Scale = 1 })
-    local function display(number, animated)
-        local ratio = math.clamp((number - minimum) / (maximum - minimum), 0, 1)
-        tween(fill, { Size = UDim2.fromScale(ratio, 1) }, animated and 0.08 or 0)
-        tween(knob, { Position = UDim2.fromScale(ratio, 0.5) }, animated and 0.08 or 0)
-    end
-    display(value)
-    local function move(x)
-        if not track.Parent or track.AbsoluteSize.X <= 0 then return end
-        local ratio = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-        local number = math.clamp(minimum + math.floor((ratio * (maximum - minimum)) / step + 0.5) * step, minimum, maximum)
-        display(number, true)
-        setter(number)
-    end
-    hit.InputBegan:Connect(function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        cancelSlider()
-        tween(knobScale, { Scale = reducedMotion and 1 or 1.2 }, 0.18, Enum.EasingStyle.Back)
-        local touchScrolls={}
-        if input.UserInputType==Enum.UserInputType.Touch then
-            local at=track.Parent
-            while at do
-                if at:IsA('ScrollingFrame')then touchScrolls[#touchScrolls+1]={Node=at,Enabled=at.ScrollingEnabled};at.ScrollingEnabled=false end
-                at=at.Parent
-            end
-        end
-        sliderDrag = { Input = input, Move = move, Finish = function()
-            for _,saved in ipairs(touchScrolls)do if saved.Node.Parent then saved.Node.ScrollingEnabled=saved.Enabled end end
-            tween(knobScale, { Scale = 1 }, 0.25, Enum.EasingStyle.Back)
-            if finished then finished() end
-        end }
-        move(input.Position.X)
-    end)
-    hit.MouseEnter:Connect(function() if not sliderDrag then tween(knobScale, { Scale = reducedMotion and 1 or 1.12 }, 0.2) end end)
-    hit.MouseLeave:Connect(function() if not sliderDrag then tween(knobScale, { Scale = 1 }, 0.2) end end)
-    return display
-end
-
--- Aurora-native choices and text fields. No legacy controls are reparented here.
-local choiceOverlay,choiceDismiss
-local function refinedField(control)
-    round(control,10)
-    local paint=control:FindFirstChildWhichIsA('UIGradient')
-    if paint then paint.Enabled=false end
-    Hub:StyleSurface(control,'field')
-    local function resting()return colors.Raised end
-    control.BackgroundColor3=resting()
-    control.TextColor3=colors.Text
-    control.MouseEnter:Connect(function()if control.Active then tween(control,{BackgroundColor3=resting():Lerp(accent,.04)},.18)end end)
-    control.MouseLeave:Connect(function()tween(control,{BackgroundColor3=resting()},.22)end)
-    if control:IsA('GuiButton')then control.Activated:Connect(function()tween(control,{BackgroundColor3=resting()},.22)end)end
-    if control:IsA('TextBox')then
-        control.Focused:Connect(function()tween(control,{BackgroundColor3=resting():Lerp(accent,.07)},.18)end)
-        control.FocusLost:Connect(function()tween(control,{BackgroundColor3=resting()},.22)end)
-    end
-end
-local function gameThumbnail(parent,source,position,size,z)
-    local well=make('Frame',parent,{Name='GameThumbnail',Position=position,Size=size,BackgroundColor3=colors.Background,BorderSizePixel=0,ZIndex=z});round(well,12)
-    if source and source.Parent then
-        local ok,visual=pcall(function()return source:Clone()end)
-        if ok and visual then
-            visual.Name='GameVisual';visual.Parent=well;visual.AnchorPoint=Vector2.zero
-            visual.Position=UDim2.fromScale(0,0);visual.Size=UDim2.fromScale(1,1)
-            visual.BackgroundTransparency=1;visual.Visible=true;visual.ZIndex=z+1
-            for _,scriptNode in ipairs(visual:QueryDescendants('LocalScript, Script, ModuleScript'))do scriptNode:Destroy()end
-            if visual:IsA('ViewportFrame')and source.CurrentCamera then
-                local camera=source.CurrentCamera:Clone();camera.Parent=visual;visual.CurrentCamera=camera
-            elseif visual:IsA('ImageLabel')then visual.ScaleType=Enum.ScaleType.Fit end
-            return well
-        end
-    end
-    local text=label(well,'No image',12,UDim2.fromScale(0,0),UDim2.fromScale(1,1),true);text.TextXAlignment=Enum.TextXAlignment.Center;text.ZIndex=z+1
-    return well
-end
-function Hub:ShowSummonDrop(entry)
-    if not self.Alive then return end
-    self.SummonDropToken=(self.SummonDropToken or 0)+1
-    local token=self.SummonDropToken
-    if self.SummonDropToast then self.SummonDropToast:Destroy()end
-    local card=make('CanvasGroup',root,{Name='SummonDropToast',AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,0,78),Size=UDim2.fromOffset(316,94),BackgroundColor3=Color3.fromRGB(23,21,30),GroupTransparency=1,BorderSizePixel=0,ZIndex=85})
-    self.SummonDropToast=card;round(card,16)
-    gameThumbnail(card,entry.visual,UDim2.fromOffset(9,9),UDim2.fromOffset(76,76),86)
-    local record=entry.record
-    local rarity=label(card,record.Rarity:upper()..(record.Shiny and ' · SHINY'or''),13,UDim2.fromOffset(98,10),UDim2.fromOffset(206,22));rarity.ZIndex=87
-    rarity.TextColor3=record.Rarity=='Secret'and Color3.fromRGB(246,167,205)or accent
-    local name=label(card,record.Name,17,UDim2.fromOffset(98,34),UDim2.fromOffset(206,28));name.ZIndex=87
-    local amount=label(card,record.Count>1 and('Obtained · Total '..record.Count)or'Obtained',14,UDim2.fromOffset(98,64),UDim2.fromOffset(206,20),true);amount.ZIndex=87
-    tween(card,{Position=UDim2.new(.5,0,0,86),GroupTransparency=0},.28)
-    task.delay(4,function()
-        if not self.Alive or token~=self.SummonDropToken or not card.Parent then return end
-        tween(card,{GroupTransparency=1,Position=UDim2.new(.5,0,0,80)},.22)
-        task.delay(.24,function()if card.Parent then card:Destroy()end;if self.SummonDropToast==card then self.SummonDropToast=nil end end)
-    end)
-end
-Hub:OnCleanup(function()if Hub.SummonDropToast then Hub.SummonDropToast:Destroy();Hub.SummonDropToast=nil end end)
-function Hub:RenderGameGallery(parent,item)
-    local gallery=make('ScrollingFrame',parent,{Name='BannerGallery',Position=UDim2.fromOffset(18,0),Size=UDim2.new(1,-36,1,0),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.X,ScrollingDirection=Enum.ScrollingDirection.X,ScrollBarThickness=3})
-    make('UIListLayout',gallery,{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,12),SortOrder=Enum.SortOrder.LayoutOrder})
-    local function render()
-        if not gallery.Parent then return end
-        for _,child in ipairs(gallery:GetChildren())do if child:IsA('GuiObject')then child:Destroy()end end
-        local ok,entries=pcall(item.Options or function()return{}end)
-        if not ok or #entries==0 then
-            local message=item.Name=='Mythic+ pulls'and 'Mythic, Secret and Exclusive pulls will appear here.'or 'Open the lobby to load this banner lineup.'
-            local empty=label(gallery,message,15,nil,UDim2.fromOffset(360,190),true);empty.TextWrapped=true
-            return
-        end
-        for index,entry in ipairs(entries)do
-            local card=make('CanvasGroup',gallery,{Name='FeaturedUnit',LayoutOrder=index,Size=UDim2.fromOffset(148,198),BackgroundColor3=colors.Raised,BorderSizePixel=0});round(card,14)
-            gameThumbnail(card,entry.visual,UDim2.fromOffset(8,8),UDim2.fromOffset(132,132),3)
-            local text=label(card,entry.name,14,UDim2.fromOffset(10,145),UDim2.fromOffset(128,44));text.TextWrapped=true;text.TextXAlignment=Enum.TextXAlignment.Center
-            if not reducedMotion then card.GroupTransparency=1;task.delay(math.min(index,5)*.03,function()if card.Parent then tween(card,{GroupTransparency=0},.2)end end)end
-        end
-    end
-    render();item.UpdateView=render
-end
-function Hub:RenderTeamGrid(row,item)
-    local grid=make('Frame',row,{Name='TeamGrid',Position=UDim2.fromOffset(14,0),Size=UDim2.new(1,-28,0,322),BackgroundTransparency=1})
-    make('UIGridLayout',grid,{CellSize=UDim2.new(1/3,-6,0,156),CellPadding=UDim2.fromOffset(8,8),SortOrder=Enum.SortOrder.LayoutOrder})
-    local function render()
-        if not grid.Parent then return end
-        for _,child in ipairs(grid:GetChildren())do if child:IsA('GuiObject')then child:Destroy()end end
-        local ok,entries=pcall(item.Options);if not ok then return end
-        for index,entry in ipairs(entries)do
-            local tile=button(grid,'',nil,UDim2.fromOffset(100,146));tile.Name='TeamSlot';tile.LayoutOrder=index;refinedField(tile)
-            tile:SetAttribute('DropdownKey','TeamSlot_'..index)
-            local portrait=gameThumbnail(tile,entry.visual,UDim2.fromOffset(5,5),UDim2.new(1,-10,0,82),3)
-            if not entry.visual then local empty=portrait:FindFirstChildWhichIsA('TextLabel');if empty then empty.Text=entry.name=='Empty'and('SLOT '..index)or'Preview unavailable';empty.TextWrapped=true end end
-            local name=label(tile,entry.name=='Empty'and'Empty slot'or entry.name,13,UDim2.fromOffset(6,89),UDim2.new(1,-12,0,40));name.TextWrapped=true;name.TextXAlignment=Enum.TextXAlignment.Center
-            local detail=label(tile,entry.detail,12,UDim2.fromOffset(6,132),UDim2.new(1,-12,0,20),true);detail.TextXAlignment=Enum.TextXAlignment.Center
-            tile.Activated:Connect(function()
-                if item.Busy then return end
-                local context=Hub:InlineContext(row,332,tile);if not context then return end
-                runItem(item,entry,nil,context)
-            end)
-        end
-    end
-    render();item.UpdateView=render
-end
-function Hub:AnimatePriorityMove(list,entry,direction)
-    if reducedMotion or not list.Parent or(direction~='Up'and direction~='Down'and direction~='Remove')then return end
-    local cards={}
-    for _,node in ipairs(list:GetChildren())do if node.Name=='DungeonPriority'then cards[#cards+1]=node end end
-    table.sort(cards,function(a,b)return a.LayoutOrder<b.LayoutOrder end)
-    local moving,index
-    for i,card in ipairs(cards)do if card:GetAttribute('PriorityRank')==tonumber(entry.rank)then moving,index=card,i;break end end
-    local neighbor=index and cards[index+(direction=='Up'and -1 or 1)]
-    local layout=list:FindFirstChildOfClass('UIListLayout')
-    if not moving or not layout or(direction~='Remove'and not neighbor)then return end
-    local scale=math.max(windowScale.Scale,.1)
-    local positions={}
-    for _,node in ipairs(list:GetChildren())do if node:IsA('GuiObject')then
-        positions[node]=UDim2.fromOffset((node.AbsolutePosition.X-list.AbsolutePosition.X)/scale+list.CanvasPosition.X,(node.AbsolutePosition.Y-list.AbsolutePosition.Y)/scale+list.CanvasPosition.Y)
-    end end
-    local auto,canvas,scrollPosition=list.AutomaticCanvasSize,list.CanvasSize,list.CanvasPosition
-    local total=list.AbsoluteCanvasSize
-    list.AutomaticCanvasSize=Enum.AutomaticSize.None
-    list.CanvasSize=UDim2.fromOffset(total.X/scale,total.Y/scale)
-    layout.Parent=nil
-    for node,position in pairs(positions)do node.Position=position end
-    local padding=layout.Padding.Offset
-    if direction=='Remove'then
-        moving:SetAttribute('Removing',true)
-        local gap=moving.Size.Y.Offset+padding
-        tween(moving,{Position=positions[moving]+UDim2.fromOffset(list.AbsoluteSize.X/scale+20,0),BackgroundTransparency=1},.24,Enum.EasingStyle.Quint)
-        for _,node in ipairs(moving:QueryDescendants('GuiObject, UIStroke'))do
-            if node:IsA('UIStroke')then tween(node,{Transparency=1},.19)
-            elseif node:IsA('GuiObject')then
-                local paint={BackgroundTransparency=1}
-                if node:IsA('TextLabel')or node:IsA('TextButton')or node:IsA('TextBox')then paint.TextTransparency=1 end
-                if node:IsA('ImageLabel')or node:IsA('ImageButton')or node:IsA('ViewportFrame')then paint.ImageTransparency=1 end
-                tween(node,paint,.19)
-            end
-        end
-        task.delay(.06,function()
-            if not list.Parent then return end
-            for node,position in pairs(positions)do
-                if node~=moving and node.Parent and position.Y.Offset>positions[moving].Y.Offset then
-                    tween(node,{Position=position-UDim2.fromOffset(0,gap)},.26,Enum.EasingStyle.Quint)
-                end
-            end
-        end)
-        task.wait(.33)
-        if moving.Parent then moving:Destroy()end
-        if list.Parent then
-            layout.Parent=list
-            list.CanvasSize=canvas;list.AutomaticCanvasSize=auto;list.CanvasPosition=scrollPosition
-        else layout:Destroy()end
-        return
-    end
-    local origin=direction=='Up'and positions[neighbor]or positions[moving]
-    local movingTarget=direction=='Up'and origin or(origin+UDim2.fromOffset(0,neighbor.Size.Y.Offset+padding))
-    local neighborTarget=direction=='Up'and(origin+UDim2.fromOffset(0,moving.Size.Y.Offset+padding))or origin
-    moving:SetAttribute('ReorderAnimating',true)
-    tween(moving,{Position=movingTarget},.28,Enum.EasingStyle.Quint)
-    tween(neighbor,{Position=neighborTarget},.28,Enum.EasingStyle.Quint)
-    task.wait(.29)
-    if list.Parent then
-        if moving.Parent and neighbor.Parent then
-            local order=moving.LayoutOrder;moving.LayoutOrder=neighbor.LayoutOrder;neighbor.LayoutOrder=order
-            moving:SetAttribute('ReorderAnimating',false)
-        end
-        layout.Parent=list
-        list.CanvasSize=canvas;list.AutomaticCanvasSize=auto;list.CanvasPosition=scrollPosition
-    else layout:Destroy()end
-end
-local function dungeonItemCard(list,entry,index,choose,width)
-    local priority=entry.kind=='Priority'
-    local effect=tostring(entry.description or entry.detail or '')
-    local effectHeight=math.max(28,TextService:GetTextSize(effect,14,CONFIG.BodyFont,Vector2.new(math.max(170,width-36),1000)).Y+6)
-    local height=100+effectHeight+(priority and 48 or 0)
-    local card
-    if priority then card=make('Frame',list,{Name='DungeonPriority',Size=UDim2.new(1,-4,0,height),BackgroundColor3=colors.Raised,BorderSizePixel=0,ZIndex=10});round(card,14)
-    else card=button(list,'',nil,UDim2.new(1,-4,0,height));card.Name='DropdownOption';card.ZIndex=10;refinedField(card);card.Activated:Connect(function()choose(entry)end)end
-    card.LayoutOrder=index
-    if priority then card:SetAttribute('PriorityRank',tonumber(entry.rank)or index)end
-    gameThumbnail(card,entry.visual,UDim2.fromOffset(10,10),UDim2.fromOffset(66,66),11)
-    local caption=(priority and('#'..tostring(entry.rank or'')..'  ')or'')..tostring(entry.name)
-    local name=label(card,caption,15,UDim2.fromOffset(88,8),UDim2.new(1,-100,0,44));name.ZIndex=12;name.TextWrapped=true
-    local meta=tostring(entry.price or '')..(entry.tier and('  ·  Tier '..tostring(entry.tier))or'')
-    local price=label(card,meta,12,UDim2.fromOffset(88,54),UDim2.new(1,-100,0,24),true);price.ZIndex=12
-    local stats=label(card,effect,14,UDim2.fromOffset(12,88),UDim2.new(1,-24,0,effectHeight));stats.Name='DungeonItemStats';stats.ZIndex=12;stats.TextWrapped=true;stats.TextTruncate=Enum.TextTruncate.None
-    if priority then
-        for i,key in ipairs({'Up','Down','Remove'})do
-            local action=button(card,key,UDim2.new((i-1)/3,6,0,100+effectHeight),UDim2.new(1/3,-12,0,34));action.ZIndex=12;action.TextSize=13;refinedField(action)
-            if entry.actions[key]then action.Activated:Connect(function()choose(entry,key)end)else action.TextTransparency=.65;action.Active=false end
-        end
-    end
-    return height
-end
-function Hub:CloseGameChoices()
-    if self.CloseInlineChoices then self:CloseInlineChoices()end
-    if choiceDismiss then pcall(choiceDismiss);choiceDismiss=nil end
-    if choiceOverlay then choiceOverlay:Destroy();choiceOverlay=nil end
-end
-function Hub:SplitSettings(parent)
-    local rows={}
-    for _,child in ipairs(parent:GetChildren())do if child:IsA('GuiObject')then rows[#rows+1]=child end end
-    local columns=make('Frame',parent,{Name='SettingsColumns',Size=UDim2.new(1,-2,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-    local left=make('Frame',columns,{Name='LeftColumn',Size=UDim2.new(.5,-7,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-    local right=make('Frame',columns,{Name='RightColumn',Position=UDim2.new(.5,7,0,0),Size=UDim2.new(.5,-7,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-    for _,column in ipairs({left,right})do make('UIListLayout',column,{Padding=UDim.new(0,14),SortOrder=Enum.SortOrder.LayoutOrder})end
-    local heights={0,0}
-    for index,row in ipairs(rows)do
-        local side=heights[1]<=heights[2]and 1 or 2
-        row.LayoutOrder=index;row:SetAttribute('PreferredSide',side)
-        Hub:StyleSurface(row,'panel');round(row,20)
-        for _,input in ipairs(row:QueryDescendants('TextBox'))do refinedField(input)end
-        row.Size=UDim2.new(1,0,0,row.Size.Y.Offset)
-        row.Parent=side==1 and left or right;heights[side]+=row.Size.Y.Offset+14
-    end
-    local function responsive()
-        local single=window.Size.X.Offset<620
-        left.Size=UDim2.new(single and 1 or .5,single and 0 or -7,0,0);right.Visible=not single
-        for _,row in ipairs(rows)do row.Parent=single and left or(row:GetAttribute('PreferredSide')==1 and left or right)end
-    end
-    responsive()
-    local watch=window:GetPropertyChangedSignal('Size'):Connect(responsive)
-    columns.Destroying:Once(function()watch:Disconnect()end)
-end
-local homeSessionStarted=os.clock()
-function Hub:RenderGameHome(parent)
-    local layout=make('UIListLayout',parent,{Padding=UDim.new(0,14),SortOrder=Enum.SortOrder.LayoutOrder})
-    local user=Players.LocalPlayer
-    local dashboard=make('Frame',parent,{Name='HomeDashboard',Size=UDim2.new(1,-2,0,472),BackgroundTransparency=1})
-    local function card(owner,name,position,size)
-        local panel=make('CanvasGroup',owner,{Name=name,Position=position,Size=size,BackgroundColor3=colors.Panel,BorderSizePixel=0})
-        round(panel,18)
-        local surface=make('Frame',panel,{Name='CardSurface',Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0});round(surface,18)
-        make('UIGradient',surface,{Color=ColorSequence.new(colors.Panel,colors.Panel),Rotation=90})
-        panel.MouseEnter:Connect(function()tween(surface,{BackgroundColor3=Color3.new(1,1,1):Lerp(accent,.07)},.25)end)
-        panel.MouseLeave:Connect(function()tween(surface,{BackgroundColor3=Color3.new(1,1,1)},.35)end)
-        return panel
-    end
-    local function caption(owner,text,position,size)
-        local node=label(owner,text,16,position,size,true)
-        node.TextSize=16;node.TextColor3=Color3.fromRGB(236,233,245);node:SetAttribute('TypographyRole','Caption')
-        return node
-    end
-    local function glowText(node,strong,white)
-        if white then
-            local paint=node:FindFirstChild("ThemeGradient");if paint then paint.Enabled=false end
-            node:SetAttribute("GradientForeground",false)
-            themed(node,"TextColor3",function()return Color3.new(1,1,1)end)
-        end
-        node:SetAttribute('HomeTextGlow',true)
-        node.ZIndex=4
-        local layers={}
-        for i,spec in ipairs({{strong and 5 or 4,.955},{1.7,strong and .79 or .86}})do
-            local halo=make('TextLabel',node.Parent,{
-                Name='TextGlow_'..i,BackgroundTransparency=1,BorderSizePixel=0,
-                TextTransparency=1,TextStrokeTransparency=1,ZIndex=3,Active=false,
-            })
-            local edge=make('UIStroke',halo,{Color=accent,Thickness=spec[1],Transparency=spec[2],ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual})
-            themed(edge,'Color',function()return white and Color3.new(1,1,1)or accent end)
-            layers[#layers+1]=halo
-        end
-        local properties={'Text','FontFace','TextSize','TextScaled','TextWrapped','TextXAlignment','TextYAlignment','RichText','LineHeight','Position','Size','AnchorPoint','Visible','Rotation','TextTruncate'}
-        local function sync(property)for _,halo in ipairs(layers)do halo[property]=node[property]end end
-        local watchers={}
-        for _,property in ipairs(properties)do
-            sync(property)
-            watchers[#watchers+1]=node:GetPropertyChangedSignal(property):Connect(function()sync(property)end)
-        end
-        node.Destroying:Once(function()
-            for _,connection in ipairs(watchers)do connection:Disconnect()end
-            for _,halo in ipairs(layers)do halo:Destroy()end
-        end)
-        return node
-    end
-    local function numeric(node)
-        node.FontFace=CONFIG.NumberFace;node.TextSize=32;node.TextColor3=Color3.fromRGB(250,249,255)
-        local paint=node:FindFirstChild('ThemeGradient');if paint then paint.Enabled=false end
-        node:SetAttribute('TypographyRole','Metric');return glowText(node,false)
-    end
-    local hero=card(dashboard,'WelcomeCard',UDim2.new(),UDim2.new(1,0,0,112))
-    hero.BackgroundColor3=Color3.fromRGB(10,9,13)
-    local heroSurface=make('Frame',hero,{Name='HeroSurface',Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0});round(heroSurface,18)
-    make('UIGradient',heroSurface,{Color=ColorSequence.new(colors.Panel,colors.Panel),Rotation=12})
-    if not reducedMotion then
-        local scan=make('Frame',hero,{Name='AmbientSweep',Position=UDim2.fromOffset(-130,-30),Size=UDim2.fromOffset(90,180),Rotation=18,BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0})
-        make('UIGradient',scan,{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,.94),NumberSequenceKeypoint.new(1,1)})})
-        local motion=TweenService:Create(scan,TweenInfo.new(7,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,false,2),{Position=UDim2.new(1,130,0,-30)})
-        motion:Play();hero.Destroying:Once(function()motion:Cancel()end)
-    end
-    caption(hero,'FYRELITH / OVERVIEW',UDim2.fromOffset(20,10),UDim2.new(1,-150,0,19))
-    label(hero,'Welcome back,',17,UDim2.fromOffset(20,34),UDim2.new(1,-160,0,25),true)
-    local welcome=label(hero,user.DisplayName,36,UDim2.fromOffset(20,58),UDim2.new(1,-160,0,46));welcome.Name='HomeDisplayName'
-    glowText(welcome,true,true)
-    local brandArt=make('ImageLabel',hero,{Name='HomeBrand',AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,4,.5,0),Size=UDim2.fromOffset(158,158),Image=CONFIG.BrandImage,ImageTransparency=.55,BackgroundTransparency=1,ScaleType=Enum.ScaleType.Fit})
-    local columns=make('Frame',dashboard,{Name='HomeColumns',Position=UDim2.fromOffset(0,126),Size=UDim2.new(1,0,0,342),BackgroundTransparency=1})
-    local left=make('Frame',columns,{Name='ProfileColumn',Size=UDim2.new(.5,-7,0,342),BackgroundTransparency=1})
-    local right=make('Frame',columns,{Name='ExperienceColumn',Position=UDim2.new(.5,7,0,0),Size=UDim2.new(.5,-7,0,342),BackgroundTransparency=1})
-    local profile=card(left,'PlayerCard',UDim2.new(),UDim2.new(1,0,0,184))
-    caption(profile,'PLAYER PROFILE',UDim2.fromOffset(16,10),UDim2.new(1,-32,0,24))
-    local avatar=make('ImageLabel',profile,{Position=UDim2.fromOffset(16,46),Size=UDim2.fromOffset(72,72),BackgroundColor3=colors.Raised,BorderSizePixel=0,Image='rbxthumb://type=AvatarHeadShot&id='..user.UserId..'&w=180&h=180'});round(avatar,18)
-    local display=label(profile,user.DisplayName,24,UDim2.fromOffset(104,46),UDim2.new(1,-120,0,38));display.TextWrapped=true
-    glowText(display,false,true)
-    label(profile,'@'..user.Name,16,UDim2.fromOffset(104,88),UDim2.new(1,-120,0,26),true)
-    local stateWell=make('Frame',profile,{Position=UDim2.fromOffset(16,136),Size=UDim2.new(1,-32,0,34),BackgroundColor3=Color3.fromRGB(9,9,10),BorderSizePixel=0});round(stateWell,11)
-    local dot=make('Frame',stateWell,{Position=UDim2.fromOffset(12,14),Size=UDim2.fromOffset(6,6),BackgroundColor3=accent,BorderSizePixel=0});round(dot,7)
-    themed(dot,'BackgroundColor3',function()return accent end)
-    local character=label(stateWell,'Character ready',16,UDim2.fromOffset(28,0),UDim2.new(1,-40,1,0))
-    local session=card(left,'SessionCard',UDim2.fromOffset(0,198),UDim2.new(1,0,0,144))
-    caption(session,'THIS SESSION',UDim2.fromOffset(16,10),UDim2.new(1,-32,0,24))
-    caption(session,'SESSION TIME',UDim2.fromOffset(16,47),UDim2.new(.58,-24,0,22))
-    caption(session,'PLAYERS',UDim2.new(.58,0,0,47),UDim2.new(.42,-16,0,22))
-    local elapsed=label(session,'00:00',32,UDim2.fromOffset(16,76),UDim2.new(.58,-24,0,44))
-    local population=label(session,'—',32,UDim2.new(.58,0,0,76),UDim2.new(.42,-16,0,44))
-    numeric(elapsed);numeric(population)
-    local experience=card(right,'ExperienceCard',UDim2.new(),UDim2.new(1,0,0,184))
-    local cover=make('Frame',experience,{Name='ExperienceCover',Position=UDim2.fromOffset(10,10),Size=UDim2.new(1,-20,0,86),BackgroundColor3=colors.Raised,BorderSizePixel=0,ClipsDescendants=true});round(cover,12)
-    local image=make('ImageLabel',cover,{Name='ExperienceImage',Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Image='rbxthumb://type=GameThumbnail&id='..game.PlaceId..'&w=768&h=432',ScaleType=Enum.ScaleType.Crop})
-    local fallback=make('ImageLabel',cover,{Name='ExperienceFallback',AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(70,70),BackgroundTransparency=1,Image=CONFIG.BrandImage,ImageTransparency=.45,Visible=not image.IsLoaded})
-    local badge=make('Frame',cover,{Position=UDim2.fromOffset(10,10),Size=UDim2.fromOffset(142,25),BackgroundColor3=Color3.fromRGB(13,13,17),BackgroundTransparency=.08,BorderSizePixel=0,ZIndex=2});round(badge,8)
-    local badgeText=label(badge,'CURRENT MATCH',11,UDim2.fromOffset(8,0),UDim2.new(1,-16,1,0));badgeText.ZIndex=3
-    local mapName=label(experience,'Current experience',20,UDim2.fromOffset(16,108),UDim2.new(1,-32,0,32))
-    glowText(mapName,false)
-    local modeText=label(experience,'Connecting to game…',16,UDim2.fromOffset(16,149),UDim2.new(1,-32,0,24),true)
-    local performance=card(right,'PerformanceCard',UDim2.fromOffset(0,198),UDim2.new(1,0,0,144))
-    caption(performance,'LIVE PERFORMANCE',UDim2.fromOffset(16,8),UDim2.new(1,-48,0,24))
-    local live=make('Frame',performance,{Name='LiveIndicator',Position=UDim2.new(1,-23,0,17),Size=UDim2.fromOffset(6,6),BackgroundColor3=accent,BorderSizePixel=0});round(live,6)
-    themed(live,'BackgroundColor3',function()return accent end)
-    if not reducedMotion then local pulse=TweenService:Create(live,TweenInfo.new(1.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{BackgroundTransparency=.65});pulse:Play();performance.Destroying:Once(function()pulse:Cancel()end)end
-    caption(performance,'FPS',UDim2.fromOffset(16,35),UDim2.new(.5,-24,0,21))
-    caption(performance,'PING',UDim2.new(.5,4,0,35),UDim2.new(.5,-20,0,21))
-    local fpsText=label(performance,'—',32,UDim2.fromOffset(16,64),UDim2.new(.5,-24,0,44));fpsText.Name='HomeFPS'
-    local pingText=label(performance,'—',32,UDim2.new(.5,4,0,64),UDim2.new(.5,-20,0,44));pingText.Name='HomePing'
-    numeric(fpsText);numeric(pingText)
-    local function historyChart(name,x,minimum)
-        local chart={Samples={},Bars={},Minimum=minimum}
-        local plot=make('Frame',performance,{Name=name,Position=x,Size=UDim2.new(.5,-24,0,20),BackgroundTransparency=1,ClipsDescendants=true})
-        for i=1,24 do
-            local bar=make('Frame',plot,{Name='Sample',Position=UDim2.new((i-1)/24,0,1,-2),Size=UDim2.new(1/24,-2,0,2),BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=.3+(24-i)*.018,BorderSizePixel=0});round(bar,2);gradient(bar,true);chart.Bars[i]=bar
-        end
-        return chart
-    end
-    local fpsChart=historyChart('FPSHistory',UDim2.fromOffset(16,116),60)
-    local pingChart=historyChart('PingHistory',UDim2.new(.5,4,0,116),100)
-    local function sample(chart,value)
-        table.insert(chart.Samples,value);if #chart.Samples>24 then table.remove(chart.Samples,1)end
-        local maximum=chart.Minimum;for _,number in ipairs(chart.Samples)do maximum=math.max(maximum,number)end
-        for i,bar in ipairs(chart.Bars)do
-            local number=chart.Samples[i-(24-#chart.Samples)]
-            local h=number and math.max(2,math.floor(number/maximum*19))or 2
-            tween(bar,{Position=UDim2.new((i-1)/24,0,1,-h),Size=UDim2.new(1/24,-2,0,h)},.28)
-        end
-    end
-    local function responsive()
-        local narrow=window.Size.X.Offset<620
-        left.Size=UDim2.new(narrow and 1 or .5,narrow and 0 or -7,0,342)
-        right.Size=left.Size;right.Position=narrow and UDim2.fromOffset(0,356)or UDim2.new(.5,7,0,0)
-        columns.Size=UDim2.new(1,0,0,narrow and 698 or 342)
-        dashboard.Size=UDim2.new(1,-2,0,narrow and 824 or 468)
-        welcome.TextSize=narrow and 30 or 36
-    end
-    responsive()
-    local watch=window:GetPropertyChangedSignal('Size'):Connect(responsive)
-    dashboard.Destroying:Once(function()watch:Disconnect()end)
-    local alive=true;dashboard.Destroying:Once(function()alive=false end)
-    local frameCount,frameSeconds=0,0
-    local frames=game:GetService('RunService').RenderStepped:Connect(function(dt)
-        if not window.Visible then frameCount=0;frameSeconds=0;return end
-        frameCount+=1;frameSeconds+=dt
-        if frameSeconds>=.5 then
-            local fps=frameCount/frameSeconds;frameCount=0;frameSeconds=0
-            fpsText.Text=tostring(math.floor(fps+.5));fpsText:SetAttribute('SampleValue',fps);sample(fpsChart,fps)
-        end
-    end)
-    dashboard.Destroying:Once(function()frames:Disconnect()end)
-    local function update()
-        local seconds=math.floor(os.clock()-homeSessionStarted)
-        elapsed.Text=string.format('%02d:%02d',math.floor(seconds/60),seconds%60)
-        population.Text=tostring(#Players:GetPlayers())..' / '..tostring(Players.MaxPlayers)
-        fallback.Visible=not image.IsLoaded
-        local pingOK,ping=pcall(function()return game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()end)
-        if pingOK and type(ping)=='number'and ping>=0 and ping<math.huge then
-            pingText.Text=tostring(math.floor(ping+.5))..' ms';pingText:SetAttribute('SampleValue',ping);sample(pingChart,ping)
-        else pingText.Text='—';pingText:SetAttribute('SampleValue',nil)end
-        character.Text=user.Character and user.Character:FindFirstChild('HumanoidRootPart')and'Character ready'or'Respawning…'
-        local environment=type(getgenv)=='function'and getgenv()or{}
-        local ready=environment.FyrelithGameReady
-        local loader=ready and ready.Loader
-        if loader and not Hub.HomeThumbnailPlace then
-            local ok,settings=pcall(loader.load_data,script,'GameplaySettings')
-            local lobby=ok and type(settings)=='table'and tonumber(settings.LOBBY_PLACE_ID)
-            if lobby and lobby>0 then Hub.HomeThumbnailPlace=lobby end
-        end
-        if Hub.HomeThumbnailPlace then
-            local thumbnail='rbxthumb://type=GameThumbnail&id='..Hub.HomeThumbnailPlace..'&w=768&h=432'
-            if image.Image~=thumbnail then image.Image=thumbnail end
-        end
-        local data=loader and loader.LevelData
-        if type(data)=='table'then
-            local name=data._location_name or data.name
-            if not name and loader.load_data then
-                local ok,levels=pcall(loader.load_data,script,'Levels');local definition=ok and type(levels)=='table'and levels[data.id]
-                name=definition and definition.name
-            end
-            mapName.Text=tostring(name or data.id or'Current experience')
-        end
-        local team=environment.FyrelithTeamControl
-        local ok,mode=pcall(function()return team and team.ActiveMode()end)
-        badgeText.Text=loader and loader.IsLobby and'IN THE LOBBY'or'CURRENT MATCH'
-        modeText.Text=(ok and mode and tostring(mode)..'  ·  'or'')..(loader and(loader.IsLobby and'Lobby'or'In match')or'Connecting to game…')
-    end
-    update()
-    task.spawn(function()while alive and Hub.Alive and dashboard.Parent do task.wait(1);if alive and dashboard.Parent then update()end end end)
-    if not reducedMotion then
-        for i,panel in ipairs({hero,profile,experience,session,performance})do
-            panel.GroupTransparency=1
-            task.delay((i-1)*.035,function()if panel.Parent then tween(panel,{GroupTransparency=0},.25)end end)
-        end
-    end
-    return layout
-end
-
-function Hub:OpenChoices(title,entries,onSelect,keepOpen,onDismiss)
-    self:CloseGameChoices()
-    if self.PlayMenuSound then self:PlayMenuSound()end
-    choiceDismiss=onDismiss
-    local overlay=make('CanvasGroup',window,{Name='GameChoices',Size=UDim2.fromScale(1,1),BackgroundColor3=colors.Background,BackgroundTransparency=0.04,GroupTransparency=1,ZIndex=35})
-    choiceOverlay=overlay
-    local dialog=make('Frame',overlay,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.new(1,-48,1,-48),BackgroundColor3=colors.Panel,BorderSizePixel=0,ZIndex=36})
-    round(dialog,20)
-    local titleLabel=label(dialog,tostring(title),20,UDim2.fromOffset(20,12),UDim2.new(1,-82,0,40));titleLabel.ZIndex=37
-    local close=button(dialog,'',UDim2.new(1,-52,0,14),UDim2.fromOffset(34,34));close.ZIndex=37
-    if drawIcon then drawIcon(close,'close',false,true)end
-    local list=make('ScrollingFrame',dialog,{Position=UDim2.fromOffset(16,66),Size=UDim2.new(1,-32,1,-82),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ScrollBarThickness=3,ZIndex=37})
-    make('UIListLayout',list,{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder})
-    local function dismiss()
-        if choiceOverlay~=overlay then return end
-        if onDismiss then pcall(onDismiss)end
-        choiceDismiss=nil
-        tween(overlay,{GroupTransparency=1},.15)
-        task.delay(.17,function()overlay:Destroy();if choiceOverlay==overlay then choiceOverlay=nil end end)
-    end
-    close.Activated:Connect(dismiss)
-    local render
-    local pending=false
-    local function choose(entry,value)
-        if pending then return end
-        pending=true
-        if entry.kind~='Input'and entry.kind~='Slider'and entry.kind~='Priority'and Hub.PlaySelectionSound then Hub:PlaySelectionSound()end
-        task.spawn(function()
-            local ok,result=xpcall(function()return onSelect(entry,value)end,debug.traceback)
-            if not Hub.Alive or not overlay.Parent then return end
-            if not ok then pending=false;Hub:Notify(tostring(result):match('^[^\n]+')or 'Action failed');warn('[Aurora] '..tostring(result));return end
-            if entry.kind=='Priority'and(value=='Up'or value=='Down'or value=='Remove')and type(result)=='table'then
-                Hub:AnimatePriorityMove(list,entry,value)
-                if not Hub.Alive or not overlay.Parent then return end
-            end
-            if keepOpen and type(result)=='table'and #result>0 then render(result)
-            else dismiss()end
-            if Hub.RefreshTools then Hub:RefreshTools()end
-            pending=false
-        end)
-    end
-    render=function(values)
-        for _,child in ipairs(list:GetChildren())do if child:IsA('GuiObject')then child:Destroy()end end
-        if #values==0 then local empty=label(list,'No options available',15,nil,UDim2.new(1,-8,0,44),true);empty.ZIndex=38;return end
-        for index,entry in ipairs(values)do
-            local caption=tostring(entry.name or entry.Name or entry.id or entry)
-            if entry.kind=='Input'then
-                local row=make('Frame',list,{LayoutOrder=index,Size=UDim2.new(1,-6,0,56),BackgroundColor3=colors.Raised,BorderSizePixel=0,ZIndex=38});round(row,11)
-                local text=label(row,caption,15,UDim2.fromOffset(12,0),UDim2.new(.52,-12,1,0));text.ZIndex=39
-                local input=box(row,'Value',UDim2.new(.52,0,0,8),UDim2.new(.48,-10,0,40));input.ZIndex=39;input.Text=tostring(entry.value or '')
-                input.FocusLost:Connect(function()choose(entry,input.Text)end)
-            else
-                local option=button(list,entry.visual and '' or caption,nil,UDim2.new(1,-6,0,entry.visual and 84 or 46));option.LayoutOrder=index;option.ZIndex=38
-                if entry.visual then
-                    gameThumbnail(option,entry.visual,UDim2.fromOffset(10,10),UDim2.fromOffset(64,64),39)
-                    local detail=entry.detail and entry.detail~=''
-                    local text=label(option,caption,15,UDim2.fromOffset(88,8),detail and UDim2.new(1,-108,0,30)or UDim2.new(1,-108,1,-16));text.ZIndex=40;text.TextWrapped=true
-                    if detail then local info=label(option,entry.detail,13,UDim2.fromOffset(88,39),UDim2.new(1,-108,0,37),true);info.ZIndex=40;info.TextWrapped=true end
-                end
-                if entry.selected then option.BackgroundColor3=colors.Background:Lerp(accent,.18)end
-                option.TextTruncate=Enum.TextTruncate.AtEnd
-                option.Activated:Connect(function()choose(entry)end)
-            end
-        end
-    end
-    render(entries)
-    tween(overlay,{GroupTransparency=0},.2)
-end
-
-local function drawGameField(item,row,wide)
-    local pos=wide and UDim2.new(1,-214,0,40)or UDim2.fromOffset(18,130)
-    local size=wide and UDim2.fromOffset(180,40)or UDim2.new(1,-36,0,36)
-    if item.Kind=='Input'then
-        local input=box(row,'Value',pos,size)
-        input.Name='GameInput';input.Text=tostring(item.Value or '')
-        input.FocusLost:Connect(function()
-            local nextValue=input.Text
-            runItem(item,nextValue,function()
-                if item.GetValue then local ok,value=pcall(item.GetValue);if ok then item.Value=value end end
-                if input.Parent then input.Text=tostring(item.Value or nextValue)end
-            end)
-        end)
-        item.UpdateView=function()if input.Parent and not input:IsFocused()then input.Text=tostring(item.Value or '')end end
-    else
-        local choose=pill(row,tostring(item.Value or 'Select…'),pos,size)
-        choose.Name='GameSelect';choose.TextTruncate=Enum.TextTruncate.AtEnd
-        item.UpdateView=function()if choose.Parent then choose.Text=tostring(item.Value or 'Select…')end end
-        choose.Activated:Connect(function()
-            local ok,values=pcall(item.Options or function()return {}end)
-            if not ok then Hub:Notify('Options are not ready yet');return end
-            Hub:OpenChoices(item.Name,values,function(entry)
-                if item.Callback then item.Callback(entry,Hub)end
-                if item.GetValue then local good,value=pcall(item.GetValue);if good then item.Value=value end end
-                if item.UpdateView then item.UpdateView()end
-            end,false)
-        end)
-    end
-end
-
-do
- local view={Step=1,Mode='Plan',Name='',Busy=false}
- local modal,mini,liveText,countText,render
- local titles={'Prepare','Name','Record','Review','Save'}
- local function api()return getgenv().FyrelithSetupGuide end
- local function destroyModal()if modal then modal:Destroy();modal=nil end end
- local function destroyMini()if mini then mini:Destroy();mini=nil end end
- local function message(text)
-  if view.Message and view.Message.Parent then view.Message.Text=tostring(text):match('^[^\n]+')or tostring(text)end
+ local env=getgenv()
+ local prior=env.FyrelithExecutionState
+ if not prior or prior.Profile~='FyrelithDefaultNoMap' then
+  local runtime=env.FyrelithRuntime
+  if runtime and runtime.Alive and runtime.Save then pcall(runtime.Save)end
+  local map=env.FyrelithMacroMap
+  if map and map.Stop then pcall(map.Stop)end
+  local render=env.FyrelithRenderBootstrap
+  if render and render.Finish then pcall(render.Finish)end
+  env.FyrelithRenderBootstrap=nil
+  local screen=env.FyrelithBlackScreen
+  if screen and screen.Stop then pcall(screen.Stop)end
+  pcall(function()game:GetService('RunService'):Set3dRenderingEnabled(true)end)
  end
- local function action(fn)
-  if view.Busy then return end
-  view.Busy=true
-  task.spawn(function()
-   local ok,err=xpcall(fn,function(e)return tostring(e):gsub('^.-:%d+: ','')end)
-   view.Busy=false
-   if not ok then message(err);if not modal then Hub:Notify(err)end end
-  end)
+end
+-- Set this URL before obfuscating.
+local FYRELITH_ASSET_BASE='https://raw.githubusercontent.com/tobedicided/New-Fyrelith/main/'
+-- Acquire before any yield so executor autoexec and teleport autoexec share one run.
+local fyStorage=(function()
+ local env=getgenv();local existing=env.FyrelithDefaultLoaderStorage
+ if existing and existing.Version==2 then return existing end
+ local native={Read=readfile,Write=writefile,Exists=isfile,Delete=delfile,List=listfiles,Folder=isfolder,Make=makefolder,Asset=getcustomasset or getsynasset}
+ local storage={Version=2,Cache='.FyrelithDefaultCache',Macros='FyrelithDefaultSettings/Macros',Moved=0,Errors=0,LegacyQueue=(existing and existing.LegacyQueue)or(env.FyrelithDefaultTeleportQueued==true and not env.FyrelithDefaultCacheQueueVersion)}
+ env.FyrelithDefaultLoaderStorage=storage
+ local function folder(path)
+  if type(native.Folder)=='function'and type(native.Make)=='function'then if not native.Folder(path)then native.Make(path)end else error('Executor folder support is required')end
  end
- local function text(owner,value,size,y,height)
-  local n=label(owner,value,size,UDim2.fromOffset(20,y),UDim2.new(1,-40,0,height or 28),size<18)
-  n.TextWrapped=true;n.TextTruncate=Enum.TextTruncate.None
-  return n
- end
- local function surface(node,kind)
-  Hub:StyleSurface(node,kind or'panel')
-  return node
- end
- local function finish()
-  action(function()api().FinishRecording();view.Step=4;destroyMini();Hub:SetVisible(true);render()end)
- end
- local function showMini()
-  destroyModal();destroyMini();Hub:SetVisible(false)
-  mini=surface(make('Frame',root,{Name='SetupGuideRecorder',AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-20,0,108),Size=UDim2.fromOffset(336,236),BackgroundColor3=colors.Panel,BorderSizePixel=0,ZIndex=90}));round(mini,18)
-  local header=surface(make('Frame',mini,{Name='RecorderHeader',Position=UDim2.fromOffset(8,8),Size=UDim2.new(1,-16,0,58),BorderSizePixel=0,ZIndex=91}),'header');round(header,13)
-  make('ImageLabel',header,{Position=UDim2.fromOffset(10,11),Size=UDim2.fromOffset(36,36),BackgroundTransparency=1,Image=CONFIG.BrandImage,ScaleType=Enum.ScaleType.Fit,ZIndex=92})
-  local title=label(header,'Recording',18,UDim2.fromOffset(56,4),UDim2.new(1,-68,0,26));title.ZIndex=92
-  local draft=label(header,view.Name,14,UDim2.fromOffset(56,29),UDim2.new(1,-68,0,22),true);draft.ZIndex=92
-  liveText=text(mini,'Place your first unit in the game.',16,78,46);liveText.ZIndex=91
-  local well=make('Frame',mini,{Position=UDim2.fromOffset(16,132),Size=UDim2.new(1,-32,0,36),BackgroundColor3=colors.Background,BorderSizePixel=0,ZIndex=91});round(well,10)
-  countText=label(well,'0 confirmed actions',18,UDim2.fromOffset(12,0),UDim2.new(1,-24,1,0));countText.ZIndex=92;countText.TextWrapped=false;countText.TextTruncate=Enum.TextTruncate.AtEnd
-  local review=pill(mini,'Stop & review',UDim2.fromOffset(16,184),UDim2.new(1,-32,0,36));review.Name='GuideStopReview';review.ZIndex=91;review.Activated:Connect(finish)
-  if not reducedMotion then local target=mini.Position;mini.Position=target+UDim2.fromOffset(10,0);tween(mini,{Position=target},.25,Enum.EasingStyle.Quint)end
- end
- function Hub:CloseSetupGuide()
-  destroyModal()
-  local g=api()
-  if g and g.Info().Recording then showMini()end
- end
- render=function()
-  local entering=modal==nil
-  destroyModal()
-  if not Hub.Alive then return end
-  Hub:CloseGameChoices()
-  local guideParent=(UIS.TouchEnabled or Hub.TouchPreview)and window.Size.Y.Offset<440 and root or window
-  modal=make('Frame',guideParent,{Name='SetupGuide',Position=UDim2.fromOffset(12,10),Size=UDim2.new(1,-24,1,-20),BackgroundColor3=colors.Background,BorderSizePixel=0,ZIndex=70});round(modal,20)
-  local header=surface(make('Frame',modal,{Name='GuideTitleSurface',Position=UDim2.fromOffset(8,2),Size=UDim2.new(1,-16,0,58),BorderSizePixel=0,ZIndex=71}),'header');round(header,16)
-  make('ImageLabel',header,{Name='GuideWordmark',Position=UDim2.fromOffset(16,12),Size=UDim2.fromOffset(138,34),BackgroundTransparency=1,Image=CONFIG.WordmarkImage,ScaleType=Enum.ScaleType.Fit,ZIndex=72})
-  local heading=label(header,'Setup Guide',16,UDim2.fromOffset(174,10),UDim2.new(1,-240,0,34));heading.ZIndex=72
-  local indicator=make('Frame',header,{Position=UDim2.fromOffset(174,44),Size=UDim2.fromOffset(24,2),BackgroundColor3=accent,BorderSizePixel=0,ZIndex=72});round(indicator,2)
-  local close=button(header,'',UDim2.new(1,-46,0,12),UDim2.fromOffset(34,34));close.Name='GuideClose';close.ZIndex=73
-  local paint=close:FindFirstChild('ThemeGradient');if paint then paint.Enabled=false end
-  close.BackgroundColor3=colors.Panel
-  if drawIcon then local icon=drawIcon(close,'close',false,true);icon.Size=UDim2.fromOffset(18,18)end
-  close.Activated:Connect(function()Hub:CloseSetupGuide()end)
-  local compactGuide=window.Size.X.Offset<700
-  modal:SetAttribute('GuideLayout',compactGuide and'Compact Flow'or'Studio Flow')
-  local progress=make('Frame',modal,{Name='GuideProgress',Position=compactGuide and UDim2.fromOffset(20,70)or UDim2.fromOffset(16,76),Size=compactGuide and UDim2.new(1,-40,0,48)or UDim2.new(0,148,1,-94),BackgroundTransparency=compactGuide and 1 or 0,BackgroundColor3=colors.Panel,BorderSizePixel=0,ZIndex=72});round(progress,15)
-  local narrow=window.Size.X.Offset<620
-  if not compactGuide then
-   local caption=label(progress,'WORKFLOW',14,UDim2.fromOffset(14,10),UDim2.new(1,-28,0,24),true);caption.ZIndex=73
-   local connector=make('Frame',progress,{Position=UDim2.fromOffset(31,62),Size=UDim2.fromOffset(1,208),BackgroundColor3=colors.Border,BackgroundTransparency=.45,BorderSizePixel=0,ZIndex=72})
-   local count=label(progress,string.format('%02d / 05',view.Step),22,UDim2.new(0,16,1,-48),UDim2.new(1,-32,0,30));count.ZIndex=73;count.Visible=window.Size.Y.Offset>500
-  end
-  for i,title in ipairs(titles)do
-   local selected=i==view.Step
-   local chip=make('Frame',progress,{Name='GuideStep'..i,Position=compactGuide and UDim2.new((i-1)/5,2,0,0)or UDim2.fromOffset(8,40+(i-1)*52),Size=compactGuide and UDim2.new(1/5,-4,1,0)or UDim2.new(1,-16,0,44),BackgroundColor3=selected and colors.Raised:Lerp(accent,.08)or colors.Panel,BackgroundTransparency=selected and 0 or(compactGuide and 0 or 1),BorderSizePixel=0,ZIndex=73});round(chip,12)
-   local badge=make('Frame',chip,{Position=UDim2.new(0,10,.5,-13),Size=UDim2.fromOffset(26,26),BackgroundColor3=selected and colors.Raised:Lerp(accent,.18)or colors.Background,BorderSizePixel=0,ZIndex=74});round(badge,13)
-   local number=label(badge,tostring(i),15,UDim2.new(),UDim2.fromScale(1,1));number.TextXAlignment=Enum.TextXAlignment.Center;number.ZIndex=75
-   local caption=label(chip,title,15,UDim2.fromOffset(42,0),UDim2.new(1,-48,1,0),true);caption.ZIndex=74;caption.TextColor3=selected and colors.Text or colors.Muted
-   if narrow then caption.Visible=false;badge.Position=UDim2.new(.5,-13,.5,-13)end
-   if selected then local light=make('Frame',chip,{AnchorPoint=Vector2.new(.5,0),Position=UDim2.fromScale(.5,0),Size=UDim2.fromOffset(24,2),BackgroundColor3=accent:Lerp(Color3.new(1,1,1),.45),BorderSizePixel=0,ZIndex=75});round(light,2)end
-  end
-  local rail=make('Frame',progress,{Position=UDim2.new(0,2,1,6),Size=UDim2.new(1,-4,0,2),BackgroundColor3=colors.Raised,BorderSizePixel=0,Visible=compactGuide,ZIndex=72});round(rail,2)
-  local fill=make('Frame',rail,{Size=UDim2.fromScale(view.LastProgress or view.Step/5,1),BackgroundColor3=accent,BackgroundTransparency=.25,BorderSizePixel=0,ZIndex=73});round(fill,2)
-  tween(fill,{Size=UDim2.fromScale(view.Step/5,1)},.24,Enum.EasingStyle.Quint);view.LastProgress=view.Step/5
-  local body=make('ScrollingFrame',modal,{Name='GuideBody',Position=compactGuide and UDim2.fromOffset(0,138)or UDim2.fromOffset(174,82),Size=compactGuide and UDim2.new(1,0,1,-230)or UDim2.new(1,-174,1,-182),CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,BackgroundTransparency=1,BorderSizePixel=0,ZIndex=72})
-  local layout=make('UIListLayout',body,{Padding=UDim.new(0,12),SortOrder=Enum.SortOrder.LayoutOrder})
-  make('UIPadding',body,{PaddingLeft=UDim.new(0,20),PaddingRight=UDim.new(0,20),PaddingBottom=UDim.new(0,12)})
-  local order=0
-  local function line(value,size,height)
-   order+=1
-   local n=label(body,value,size,nil,UDim2.new(1,-4,0,height or 32),size<18);n.LayoutOrder=order;n.ZIndex=73;n.TextWrapped=true;n.TextTruncate=Enum.TextTruncate.None;n.AutomaticSize=Enum.AutomaticSize.Y
-   local paint=n:FindFirstChild('ThemeGradient');if paint then paint.Enabled=false end;n.TextColor3=colors.Text
-   return n
-  end
-  local function addButton(value,callback,name)
-   order+=1;local n=pill(body,value,nil,UDim2.new(1,-4,0,44));n.Name=name or'GuideChoice';n.LayoutOrder=order;n.ZIndex=73;n.Activated:Connect(callback);return n
-  end
-  local g=api();local info=g.Info()
-  if view.Step==1 then
-   line('Build your next strategy',26,38)
-   line(info.Lobby and'You are in the lobby. Start recording after joining a match.'or('Current map: '..info.Map),16,46)
-   if info.TeamEntries and #info.TeamEntries>0 then
-    order+=1
-    local team=surface(make('Frame',body,{Name='GuideTeam',LayoutOrder=5,Size=UDim2.new(1,-4,0,148),BackgroundColor3=colors.Panel,BorderSizePixel=0,ZIndex=73}));round(team,16)
-    local caption=label(team,'CURRENT TEAM',14,UDim2.fromOffset(14,8),UDim2.new(1,-28,0,22),true);caption.ZIndex=74
-    for i,entry in ipairs(info.TeamEntries)do if i<=6 then
-     local tile=make('Frame',team,{Position=UDim2.new((i-1)/6,4,0,32),Size=UDim2.new(1/6,-8,0,110),BackgroundTransparency=1,ZIndex=74})
-     local size=math.clamp((window.Size.X.Offset-(compactGuide and 104 or 292))/6-12,32,60)
-     gameThumbnail(tile,entry.visual,UDim2.new(.5,-size/2,0,0),UDim2.fromOffset(size,size),75)
-     local name=label(tile,entry.name,14,UDim2.fromOffset(3,66),UDim2.new(1,-6,0,38),true);name.ZIndex=76;name.TextWrapped=true;name.TextXAlignment=Enum.TextXAlignment.Center
-    end end
-   else line('Equip a team before recording.',16,36)end
-   order+=1
-   local modes=make('Frame',body,{Name='GuideModes',LayoutOrder=order,Size=UDim2.new(1,-4,0,120),BackgroundTransparency=1,ZIndex=73})
-   for i,mode in ipairs({'Plan','Macro'})do
-    local selected=view.Mode==mode
-    local choice=button(modes,'',UDim2.new((i-1)*.5,i==1 and 0 or 6,0,0),UDim2.new(.5,-6,1,0));choice.Name='Guide'..mode;choice.ZIndex=74;round(choice,14)
-    local gradient=choice:FindFirstChild('ThemeGradient');if gradient then gradient.Enabled=false end
-    local rest=selected and colors.Raised:Lerp(accent,.07)or colors.Panel
-    choice.BackgroundColor3=rest
-    local edge=make('UIStroke',choice,{Thickness=1,Color=selected and accent or colors.Border,Transparency=selected and .68 or .75,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-    local shine=make('Frame',choice,{Position=UDim2.fromOffset(14,0),Size=UDim2.new(1,-28,0,2),BackgroundColor3=selected and accent or colors.Text,BackgroundTransparency=selected and .3 or .94,BorderSizePixel=0,ZIndex=75});round(shine,2)
-    local badge=make('Frame',choice,{Position=UDim2.fromOffset(14,14),Size=UDim2.fromOffset(32,32),BackgroundColor3=colors.Background,BorderSizePixel=0,ZIndex=75});round(badge,10)
-    if drawIcon then drawIcon(badge,mode=='Plan'and'layers'or'terminal',false,true)end
-    local title=label(choice,mode=='Plan'and(narrow and'Plan'or'Placement Plan')or'Macro',19,UDim2.fromOffset(58,14),UDim2.new(1,-72,0,32));title.ZIndex=76
-    local detail=label(choice,mode=='Plan'and'Positions & upgrade steps'or'Actions, waves & timing',15,UDim2.fromOffset(14,61),UDim2.new(1,-28,0,42),true);detail.ZIndex=76;detail.TextWrapped=true
-    choice.MouseEnter:Connect(function()tween(choice,{BackgroundColor3=rest:Lerp(accent,.05)},.18)end)
-    choice.MouseLeave:Connect(function()tween(choice,{BackgroundColor3=rest},.22)end)
-    choice.Activated:Connect(function()view.Mode=mode;view.Name='';render()end)
+ local ok=pcall(function()folder(storage.Cache);folder('FyrelithDefaultSettings');folder(storage.Macros)end)
+ storage.Ready=ok
+ local runtime={['FyrelithRuntime.luau']=true,['FyrelithRuntimePayload.luau']=true,['FyrelithLoadDelayPrelude.luau']=true}
+ function storage.Map(path)
+  if storage.Ready and type(path)=='string' then
+   local name=path:gsub('\\','/'):match('([^/]+)$')
+   local lower=name and name:lower() or ''
+   if lower:match('^fyrelith') and lower:match('%.json$') and not lower:find('audit',1,true) then
+    if name:match('^FyrelithMacros_%d+_%d+%.json$') then return storage.Macros..'/'..name end
+    return 'FyrelithDefaultSettings/'..name
    end
-  elseif view.Step==2 then
-   line('Name your '..(view.Mode=='Plan'and'plan'or'macro'),24,38)
-   line('A new name keeps your existing recordings safe.',16,34)
-   order+=1
-   local field=surface(make('Frame',body,{Name='GuideNameCard',LayoutOrder=order,Size=UDim2.new(1,-4,0,124),BorderSizePixel=0,ZIndex=73}));round(field,16)
-   local caption=label(field,'Recording name',16,UDim2.fromOffset(16,10),UDim2.new(1,-32,0,26));caption.ZIndex=74
-   local input=box(field,'Recording name',UDim2.fromOffset(16,46),UDim2.new(1,-32,0,44));input.Name='GuideName';input.ZIndex=74;refinedField(input)
-   local characters=label(field,'',13,UDim2.fromOffset(16,96),UDim2.new(1,-32,0,20),true);characters.TextXAlignment=Enum.TextXAlignment.Right;characters.ZIndex=74
-   input.Text=view.Name~=''and view.Name or g.Suggest(view.Mode);view.Name=input.Text
-   characters.Text=tostring(#input.Text)..' / 60'
-   input:GetPropertyChangedSignal('Text'):Connect(function()view.Name=input.Text;characters.Text=tostring(#input.Text)..' / 60'end)
-  elseif view.Step==3 then
-   line(info.Recording and'Recording is in progress'or'Ready to record',24,38)
-   order+=1
-   local readyCard=surface(make('Frame',body,{Name='GuideRecordCard',LayoutOrder=order,Size=UDim2.new(1,-4,0,144),BorderSizePixel=0,ZIndex=73}));round(readyCard,16)
-   local caption=label(readyCard,view.Name,18,UDim2.fromOffset(16,10),UDim2.new(1,-32,0,28));caption.ZIndex=74
-   local instructions=label(readyCard,info.Recording and'Continue playing, then stop to review your confirmed actions.'or'Place units, upgrade, sell or use skills normally.',16,UDim2.fromOffset(16,48),UDim2.new(1,-32,0,44),true);instructions.ZIndex=74;instructions.TextWrapped=true
-   local note=label(readyCard,info.Lobby and'Enter a match before starting.'or'Pause Auto Play and Macro playback first.',14,UDim2.fromOffset(16,102),UDim2.new(1,-32,0,32),true);note.ZIndex=74;note.TextWrapped=true
-   addButton(info.Recording and'Continue recording in game'or'Start recording',function()
-    action(function()if not g.Info().Recording then g.Start(view.Mode,view.Name)end;view.Step=3;showMini()end)
-   end,'GuideStartRecording')
-   if info.Recording then addButton('Stop & review',finish,'GuideStopReview')end
-  elseif view.Step==4 then
-   line('Review your recording',24,38)
-   line(view.Name,18,32)
-   line(tostring(info.Count)..' confirmed actions · '..tostring(info.Places)..' placements',16,34)
-   if #info.Actions==0 then line('No confirmed actions yet. Return to the recording step.',16,44)end
-   view.ReviewPage=math.clamp(view.ReviewPage or 1,1,math.max(1,math.ceil(#info.Actions/50)))
-   for i=(view.ReviewPage-1)*50+1,math.min(#info.Actions,view.ReviewPage*50)do
-    local step=info.Actions[i];order+=1
-    local card=surface(make('Frame',body,{Name='GuideAction',LayoutOrder=order,Size=UDim2.new(1,-4,0,84),BackgroundColor3=colors.Panel,BorderSizePixel=0,ZIndex=73}));round(card,14)
-    local badge=make('Frame',card,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(32,32),BackgroundColor3=colors.Background,BorderSizePixel=0,ZIndex=74});round(badge,10)
-    local number=label(badge,tostring(i),16,UDim2.new(),UDim2.fromScale(1,1));number.TextXAlignment=Enum.TextXAlignment.Center;number.ZIndex=75
-    local title=label(card,step.Name..(step.UnitName and(' · '..step.UnitName)or''),17,UDim2.fromOffset(56,10),UDim2.new(1,-70,0,28));title.ZIndex=74
-    local detail=label(card,'Wave '..step.Wave..(step.Time and(' · '..string.format('%.1fs',step.Time))or'')..(step.Position and(' · '..step.Position)or''),14,UDim2.fromOffset(56,42),UDim2.new(1,-70,0,32),true);detail.ZIndex=74;detail.TextWrapped=true
-   end
-   if #info.Actions>50 then
-    line('Page '..view.ReviewPage..' / '..math.ceil(#info.Actions/50),15,28)
-    if view.ReviewPage>1 then addButton('Previous actions',function()view.ReviewPage-=1;render()end)end
-    if view.ReviewPage<math.ceil(#info.Actions/50)then addButton('Next actions',function()view.ReviewPage+=1;render()end)end
-   end
-  else
-   line('Saved and ready',26,40)
-   order+=1
-   local result=surface(make('Frame',body,{Name='GuideSavedCard',LayoutOrder=order,Size=UDim2.new(1,-4,0,126),BorderSizePixel=0,ZIndex=73}));round(result,16)
-   make('ImageLabel',result,{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-14,.5,0),Size=UDim2.fromOffset(82,82),BackgroundTransparency=1,Image=CONFIG.BrandImage,ImageTransparency=.35,ScaleType=Enum.ScaleType.Fit,ZIndex=74})
-   local name=label(result,view.Name,20,UDim2.fromOffset(16,12),UDim2.new(1,-120,0,32));name.ZIndex=74
-   local saved=label(result,view.Mode=='Macro'and'MACRO LIBRARY'or'AUTO PLAY PLANS',14,UDim2.fromOffset(16,54),UDim2.new(1,-120,0,24),true);saved.ZIndex=74
-   local count=label(result,tostring(info.Count)..' confirmed actions saved',16,UDim2.fromOffset(16,88),UDim2.new(1,-120,0,26),true);count.ZIndex=74
-   addButton('Open saved '..(view.Mode=='Macro'and'macro'or'plan'),function()destroyModal();Hub:OpenCategory(view.Mode=='Macro'and'Macro'or'Auto Play')end,'GuideOpenSaved')
-   addButton('Create another setup',function()action(function()g.Reset();view.Step=1;view.Name='';render()end)end,'GuideNewSetup')
   end
-  local footerX=compactGuide and 20 or 194
-  view.Message=text(modal,'',14,0,38);view.Message.Name='GuideMessage';view.Message.Position=UDim2.new(0,footerX,1,-86);view.Message.Size=UDim2.new(1,-footerX-20,0,34);view.Message.TextColor3=Color3.fromRGB(244,191,137);view.Message.ZIndex=74
-  local back=pill(modal,'Back',UDim2.new(0,footerX,1,-48),UDim2.fromOffset(110,34));back.Name='GuideBack';back.ZIndex=74;back.Visible=view.Step==2 or(view.Step==3 and not info.Recording)
-  back.Activated:Connect(function()view.Step=math.max(1,view.Step-1);render()end)
-  if view.Step==1 or view.Step==2 or view.Step==4 then
-   local next=pill(modal,view.Step==4 and'Save & finish'or'Next',UDim2.new(1,-176,1,-48),UDim2.fromOffset(156,34));next.Name='GuideNext';next.ZIndex=74
-   next.Activated:Connect(function()action(function()
-    if view.Step==2 then view.Name=g.ValidateName(view.Mode,view.Name)elseif view.Step==4 then g.Save()end
-    view.Step+=1;render()
-   end)end)
+  if not storage.Ready or type(path)~='string'or path:find('[/\\]')then return path end
+  if path:match('^FyrelithMacros_%d+_%d+%.json$')then return storage.Macros..'/'..path end
+  local lower=path:lower()
+  local image=lower:match('^fyrelith')and(lower:match('%.png$')or lower:match('%.jpg$')or lower:match('%.jpeg$')or lower:match('%.webp$')or lower:match('%.gif$'))
+  local audit=lower:match('^fyrelith')and lower:find('audit',1,true)and lower:match('%.json$')
+  if image or audit or runtime[path]then return storage.Cache..'/'..path end
+  return path
+ end
+ local function move(source,target)
+  if source==target or not native.Exists(source)then return end
+  local content=native.Read(source)
+  if native.Exists(target)and native.Read(target)~=content then
+   local backup=target..'.previous.'..tostring(DateTime.now().UnixTimestampMillis)
+   local old=native.Read(target);native.Write(backup,old);assert(native.Read(backup)==old,'Backup verification failed')
   end
-  modal:SetAttribute('GuideStep',view.Step)
-  if not reducedMotion and(entering or view.RenderedStep~=view.Step)then local target=modal.Position;modal.Position=target+UDim2.fromOffset(6,0);tween(modal,{Position=target},.22,Enum.EasingStyle.Quint)end
-  view.RenderedStep=view.Step
+  native.Write(target,content);assert(native.Read(target)==content,'Migration verification failed')
+  native.Delete(source);storage.Moved+=1
  end
- function Hub:OpenSetupGuide()
-  local g=api();if not g then self:Notify('Game controllers are still loading');return end
-  destroyMini()
-  if g.Draft.Name~=''then view.Mode=g.Draft.Mode;view.Name=g.Draft.Name;view.Step=g.Info().Recording and 3 or g.Draft.Stage end
-  self:SetVisible(true);render()
+ function storage.Migrate()
+  if not storage.Ready or type(native.List)~='function'or type(native.Delete)~='function'then return end
+  local success,files=pcall(native.List,'');if not success then return end
+  for _,path in ipairs(files)do
+   local name=path:gsub('\\','/'):match('([^/]+)$')
+   if name and not runtime[name]then
+    local target=storage.Map(name)
+    if target~=name and native.Exists(path)then
+     local moved=pcall(function()
+      if name:match('^FyrelithMacros_%d+_%d+%.json$')and native.Exists(target)then
+       local data=native.Read(path)
+       if native.Read(target)~=data then local backup=target..'.legacy.'..tostring(DateTime.now().UnixTimestampMillis);native.Write(backup,data);assert(native.Read(backup)==data)end
+       native.Delete(path);storage.Moved+=1
+      else move(path,target)end
+     end);if not moved then storage.Errors+=1 end
+    end
+   end
+  end
  end
+ function storage.PublishRuntime()
+  if not storage.Ready then return end
+  -- One temporary bridge lets already-queued older versions reach the new folder.
+  if storage.LegacyQueue and not env.FyrelithDefaultCacheBooted then
+   native.Write('FyrelithRuntime.luau',"getgenv().FyrelithDefaultCacheBooted=true;local run=loadstring(readfile('.FyrelithDefaultCache/FyrelithRuntime.luau'));if run then run()end")
+  elseif type(native.Delete)=='function'and native.Exists('FyrelithRuntime.luau')then native.Delete('FyrelithRuntime.luau')end
+  for _,name in ipairs({'FyrelithRuntimePayload.luau','FyrelithLoadDelayPrelude.luau'})do if type(native.Delete)=='function'and native.Exists(name)then native.Delete(name)end end
+ end
+ function storage.Read(path)
+  local target=storage.Map(path)
+  -- An older macro module may save once while stopping, after the first migration.
+  -- Existing macros belong to the original profile and stay there.
+  return native.Read(target)
+ end
+ function storage.Write(path,data)
+  local target=storage.Map(path);local result=native.Write(target,data)
+  if target==storage.Cache..'/FyrelithRuntime.luau'then storage.PublishRuntime()end
+  return result
+ end
+ function storage.Exists(path)return native.Exists(storage.Map(path))end
+ function storage.Asset(path,...)return native.Asset(storage.Map(path),...)end
+ if storage.Ready then
+  -- Dedicated loader profile: never import or move another profile.
+  if not env.FyrelithDefaultCacheQueueVersion then env.FyrelithDefaultTeleportQueued=false;env.FyrelithDefaultCacheQueueVersion=1 end
+ end
+ return storage
+end)()
+local readfile=fyStorage.Read
+fyStorage.Epoch=fyStorage.Epoch or 0
+local fyWriteEpoch=fyStorage.Epoch
+local function writefile(path,data)
+ if fyWriteEpoch~=fyStorage.Epoch then return end
+ return fyStorage.Write(path,data)
+end
+local isfile=fyStorage.Exists
+local getcustomasset=fyStorage.Ready and fyStorage.Asset or getcustomasset
+local getsynasset=fyStorage.Ready and fyStorage.Asset or getsynasset
+
+-- Images are downloaded as data only and cached locally.
+local fyAssetSizes={['Obsidian-Logo-91ece6806f23-compact-v1.png']=43977,['Obsidian-Launcher-258f87eab02e-compact-v1.png']=38807,['Fyrelith-Halloween-pumpkin-8a50525726bf-compact-v1.png']=31341,['Fyrelith-Halloween-web-57f7718ec81b-compact-v1.png']=40013,['Fyrelith-Halloween-ghost-2a07c00a4af1-compact-v1.png']=30920,['Fyrelith-Halloween-bat-4044ac8c7d72-compact-v1.png']=27357,['Fyrelith-Halloween-moon-0a5b51923909-compact-v1.png']=22294,['Fyrelith-Deep-Void-ca8e3b10fabf-compact-v1.jpg']=131235,['FyrelithThemeHeader.v2.png']=2135476,['FyrelithHeader.rose-eclipse.atelier-v2.png']=1857289,['FyrelithHeader.event-horizon.atelier-v2.png']=1921535,['FyrelithHeader.nebula-violet.atelier-v2.png']=1958168,['FyrelithHeader.stardust-blue.atelier-v2.png']=1947393,['FyrelithBlackHole.v1.png']=1025842,['FyrelithWebhookAvatar.blackhole.png']=1047959}
+local function fyReadRemoteAsset(name)
+ local expected=fyAssetSizes[name]
+ if not expected then return nil end
+ local path='.FyrelithDefaultCache/'..name
+ local function valid(data)
+  return type(data)=='string' and #data==expected and (data:sub(1,8)=='\137PNG\13\10\26\10' or data:sub(1,3)=='\255\216\255')
+ end
+ if type(readfile)=='function' then
+  local ok,data=pcall(readfile,path)
+  if ok and valid(data) then return data,path end
+ end
+ if FYRELITH_ASSET_BASE:find('YOUR_',1,true) then warn('Fyrelith: set FYRELITH_ASSET_BASE before using remote images');return nil end
+ local url=FYRELITH_ASSET_BASE:gsub('/+$','')..'/'..name
+ local transport=request or http_request or (syn and syn.request) or (http and http.request)
+ local data
+ if type(transport)=='function' then
+  local ok,response=pcall(transport,{Url=url,Method='GET'})
+  if ok and type(response)=='table' and tonumber(response.StatusCode or response.Status)==200 then data=response.Body end
+ else
+  local ok,value=pcall(function()return game:HttpGet(url)end)
+  if ok then data=value end
+ end
+ if not valid(data) then warn('Fyrelith: image unavailable: '..name);return nil end
+ if type(writefile)=='function' then
+  if type(makefolder)=='function' then pcall(makefolder,'.FyrelithDefaultCache') end
+  local ok=pcall(writefile,path,data)
+  if ok then return data,path end
+ end
+ return data,nil
+end
+local function loadRemoteImage(name)
+ local _,path=fyReadRemoteAsset(name)
+ local importer=getcustomasset or getsynasset
+ if not path or type(importer)~='function' then return '' end
+ local ok,value=pcall(importer,path)
+ return ok and value or ''
+end
+local function fyAssetDataUri(name)
+ local data=fyReadRemoteAsset(name)
+ if not data then return nil end
+ local alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+ local chunks={}
+ for i=1,#data,3 do
+  local a,b,c=data:byte(i,i+2)
+  local n=a*65536+(b or 0)*256+(c or 0)
+  local x=math.floor(n/262144)%64+1
+  local y=math.floor(n/4096)%64+1
+  local z=math.floor(n/64)%64+1
+  local w=n%64+1
+  chunks[#chunks+1]=alphabet:sub(x,x)..alphabet:sub(y,y)..(b and alphabet:sub(z,z) or '=')..(c and alphabet:sub(w,w) or '=')
+  if i%49152==1 then task.wait() end
+ end
+ return 'data:image/png;base64,'..table.concat(chunks)
+end
+
+local fyEnv=getgenv()
+local fyLoadDelayPrelude=[============[-- Small destination prelude: install before parsing the full artwork/UI payload.
+local env=getgenv()
+local leaveRouter=(function()
+local env=getgenv()
+local existing=env.FyrelithDefaultLeaveRouter
+if existing and existing.Game==game and existing.Version==1 then return existing end
+local T=game:GetService('TeleportService');local P=game:GetService('Players')
+local router={Game=game,Version=1,Key='FyrelithDefaultPendingAutoLeave'}
+env.FyrelithDefaultLeaveRouter=router
+function router.Decide(intent,experience,place,job,now)
+ if type(intent)~='table'or tonumber(intent.Experience)~=tonumber(experience)or not tonumber(intent.LobbyPlaceId)then return 'Ignore' end
+ local age=(tonumber(now)or 0)-(tonumber(intent.Issued)or -math.huge)
+ if age<0 or age>600000 then return 'Expired' end
+ if tonumber(intent.LobbyPlaceId)==tonumber(place)then return 'Lobby' end
+ if intent.SourceJob==job then return 'Same match' end
+ return 'Redirect'
+end
+function router.Read()
+ local ok,intent=pcall(T.GetTeleportSetting,T,router.Key)
+ return ok and intent or nil
+end
+function router.Clear()
+ pcall(T.SetTeleportSetting,T,router.Key,false)
+ local state=env.FyrelithLobbyReturnState
+ if state and state.Game==game then state.Cancelled=true end
+ env.FyrelithReturnLobbyInProgress=false
+end
+function router.Redirect(intent)
+ if type(intent)~='table'or tonumber(intent.Experience)~=game.GameId or not tonumber(intent.LobbyPlaceId)then return false end
+ if tonumber(intent.LobbyPlaceId)==game.PlaceId then router.Clear();return false end
+ local prior=env.FyrelithLobbyReturnState
+ if prior and prior.Game==game and not prior.Cancelled then return not prior.Failed end
+ local state={Game=game,Attempts=0,Destination=tonumber(intent.LobbyPlaceId),Status='Returning to lobby',Connections={}}
+ env.FyrelithLobbyReturnState=state;env.FyrelithReturnLobbyInProgress=true
+ local delay=env.FyrelithLoadDelayState;if delay then delay.Cancelled=true;delay.Active=false end
+ local function cleanup()for _,c in ipairs(state.Connections)do c:Disconnect()end;table.clear(state.Connections)end
  task.spawn(function()
-  while Hub.Alive do
-   task.wait(.4)
-   if mini and mini.Parent and api()then
-    local info=api().Info()
-    if liveText and liveText.Parent then liveText.Text=info.Finishing and'Finishing the latest confirmed actions…'or(info.Places>0 and'Unit placement confirmed. Add units, upgrade or use skills.'or'Place your first unit in the game.')end
-    if countText and countText.Parent then countText.Text=tostring(info.Count)..' confirmed actions'..(info.Pending>0 and' · confirming…'or'')end
+  local deadline=os.clock()+15
+  while not P.LocalPlayer and os.clock()<deadline and not state.Cancelled do task.wait(.1)end
+  local player=P.LocalPlayer
+  if player then
+   local queue=queue_on_teleport or queueonteleport or(syn and syn.queue_on_teleport)
+   if type(queue)=='function'and not env.FyrelithDefaultTeleportQueued then
+    local ok=pcall(queue,"local run=loadstring(readfile('.FyrelithDefaultCache/FyrelithRuntime.luau'));if run then run()end")
+    if ok then env.FyrelithDefaultTeleportQueued=true end
+   end
+   state.Connections[#state.Connections+1]=player.OnTeleport:Connect(function(value)
+    if value==Enum.TeleportState.Failed then state.TeleportFailed=true;state.Departing=false
+    elseif value==Enum.TeleportState.InProgress then state.Departing=true end
+   end)
+   state.Connections[#state.Connections+1]=T.TeleportInitFailed:Connect(function(who)if who==player then state.TeleportFailed=true;state.Departing=false end end)
+   for attempt=1,4 do
+    if state.Cancelled then break end
+    state.Attempts=attempt;state.TeleportFailed=false
+    local ok,err=pcall(T.Teleport,T,state.Destination,player)
+    if not ok then state.TeleportFailed=true;state.Error=tostring(err)end
+    local untilTime=os.clock()+20
+    while not state.Cancelled and not state.TeleportFailed and not state.Departing and os.clock()<untilTime do task.wait(.1)end
+    if state.Departing then state.Status='Joining lobby';return end
+    if attempt<4 and not state.Cancelled then task.wait(attempt*2)end
    end
   end
- end)
- Hub:OnCleanup(function()destroyModal();destroyMini()end)
-end
-
--- Expanding selectors occupy their own row; other groups flow down naturally.
-local inlineRequest
-function Hub:IsInlineOpen()
-    return Hub.InlineClosing~=nil or(inlineRequest and inlineRequest.Opened and not inlineRequest.Closed and inlineRequest.Row.Parent~=nil)
-end
-function Hub:CloseInlineChoices(immediate)
-    local context=inlineRequest
-    if not context then return end
-    if context.CommitInput then pcall(context.CommitInput);context.CommitInput=nil end
-    inlineRequest=nil;context.Closed=true
-    if context.OnDismiss then pcall(context.OnDismiss);context.OnDismiss=nil end
-    if context.Button and context.Button.Parent then context.Button:SetAttribute('DropdownOpen',false)end
-    local closing={};Hub.InlineClosing=closing
-    local duration=immediate and 0 or .28
-    if context.Row.Parent then tween(context.Row,{Size=UDim2.new(context.RowWidth.Scale,context.RowWidth.Offset,0,context.BaseHeight)},duration)end
-    if context.Dropdown and context.Dropdown.Parent then
-        local old=context.Dropdown
-        if immediate then old:Destroy()else
-            tween(old,{Size=UDim2.new(1,-36,0,0)},duration)
-            task.delay(duration,function()if old.Parent then old:Destroy()end end)
-        end
-    end
-    task.delay(duration,function()
-        if Hub.InlineClosing~=closing then return end
-        Hub.InlineClosing=nil
-        if Hub.Alive and Hub.PendingRefresh and not Hub:IsInlineOpen()then Hub:RefreshTools()end
-    end)
-end
-function Hub:InlineContext(row,baseHeight,trigger)
-    local triggerKey=trigger and trigger:GetAttribute('DropdownKey')
-    if inlineRequest and inlineRequest.Row==row and inlineRequest.Opened and (inlineRequest.Button==trigger or(triggerKey and inlineRequest.TriggerKey==triggerKey))then self:CloseInlineChoices();return nil end
-    self:CloseGameChoices()
-    Hub.InlineClosing=nil
-    local context={Row=row,RowWidth=row.Size.X,BaseHeight=baseHeight,Button=trigger,TriggerKey=triggerKey,Closed=false,Opened=false}
-    inlineRequest=context
-    setmetatable(context,{__index=Hub})
-    function context:OpenChoices(title,entries,onSelect,keepOpen,onDismiss)
-        if self.Closed or inlineRequest~=self or not self.Row.Parent then return end
-        if not self.Opened and Hub.PlayMenuSound then Hub:PlayMenuSound()end
-        self.Opened=true;self.OnDismiss=onDismiss
-        self.Button:SetAttribute('DropdownOpen',true)
-        local dropdown=make('Frame',self.Row,{Name='InlineDropdown',Position=UDim2.fromOffset(18,self.BaseHeight+3),Size=UDim2.new(1,-36,0,0),BackgroundColor3=colors.Background,BorderSizePixel=0,ClipsDescendants=true,ZIndex=8})
-        round(dropdown,10);self.Dropdown=dropdown
-        dropdown.BackgroundColor3=colors.Panel
-        local menuEdge=make('UIStroke',dropdown,{Color=Color3.fromRGB(79,76,90),Thickness=1,Transparency=.82,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
-        -- Reveal through the clipping frame, avoiding a nested render texture that
-        -- can leave transparent options blank until their first hover repaint.
-        local fade=make('Frame',dropdown,{Name='DropdownFade',Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,ZIndex=9});self.Fade=fade
-        local list=make('ScrollingFrame',fade,{Name='DropdownOptions',Position=UDim2.fromOffset(4,4),Size=UDim2.new(1,-8,1,-8),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollingDirection=Enum.ScrollingDirection.Y,ScrollBarThickness=3,ZIndex=9})
-        make('UIListLayout',list,{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder})
-        local render,pending
-        local function choose(entry,value)
-            if pending or self.Closed then return end
-            pending=true
-            if entry.kind~='Input'and entry.kind~='Slider'and entry.kind~='Priority'and Hub.PlaySelectionSound then Hub:PlaySelectionSound()end
-            task.spawn(function()
-                local ok,result=xpcall(function()return onSelect(entry,value)end,debug.traceback)
-                if self.Closed or not row.Parent then return end
-                if not ok then pending=false;Hub:Notify(tostring(result):match('^[^\n]+')or 'Selection failed');warn('[Aurora dropdown] '..tostring(result));return end
-                if entry.kind=='Priority'and(value=='Up'or value=='Down'or value=='Remove')and type(result)=='table'then
-                    Hub:AnimatePriorityMove(list,entry,value)
-                    if self.Closed or not row.Parent then return end
-                end
-                if keepOpen and type(result)=='table'then render(result)
-                else Hub:CloseInlineChoices()end
-                pending=false
-            end)
-        end
-        render=function(values)
-            if self.Closed or not list.Parent then return end
-            local position=list.CanvasPosition
-            for _,child in ipairs(list:GetChildren())do if child:IsA('GuiObject')then child:Destroy()end end
-            local total=8
-            if #values==0 then
-                local empty=label(list,'No options available yet',14,nil,UDim2.new(1,-4,0,42),true);empty.ZIndex=10
-                total=54
-            end
-            for index,entry in ipairs(values)do
-                local caption=tostring(entry.name or entry.Name or entry.id or entry)
-                local h=entry.kind=='Priority'and 142 or((entry.kind=='Input'or entry.kind=='Slider')and 88 or(entry.kind=='Toggle'and 62 or(entry.visual and 94 or 32)))
-                if UIS.TouchEnabled or Hub.TouchPreview then h=math.max(h,44)end
-                if entry.kind=='Priority'or entry.kind=='DungeonItem'then
-                    h=dungeonItemCard(list,entry,index,choose,math.max(210,row.AbsoluteSize.X/math.max(windowScale.Scale,.1)-48))
-                elseif entry.kind=='Slider'then
-                    local field=make('Frame',list,{Name='UnitSettingSlider',LayoutOrder=index,Size=UDim2.new(1,0,0,h),BackgroundColor3=colors.Raised,BorderSizePixel=0,ZIndex=10});round(field,10)
-                    local text=label(field,caption,14,UDim2.fromOffset(12,4),UDim2.new(.76,-12,0,32));text.ZIndex=11;text.TextWrapped=true
-                    local value=tonumber(entry.value)or entry.min
-                    local number=label(field,tostring(value),15,UDim2.new(.76,0,0,4),UDim2.new(.24,-12,0,32));number.TextXAlignment=Enum.TextXAlignment.Right;number.ZIndex=11
-                    if entry.max>entry.min then
-                        slider(field,58,entry.min,entry.max,value,1,function(nextValue)value=nextValue;number.Text=tostring(value)end,function()choose(entry,value)end)
-                        for _,object in ipairs(field:QueryDescendants('GuiObject'))do object.ZIndex=11 end
-                    end
-                elseif entry.kind=='Toggle'then
-                    local field=make('Frame',list,{Name='UnitSettingToggle',LayoutOrder=index,Size=UDim2.new(1,-4,0,h),BackgroundColor3=colors.Raised,BorderSizePixel=0,ZIndex=10});round(field,10)
-                    local text=label(field,caption,14,UDim2.fromOffset(12,4),UDim2.new(1,-96,1,-8));text.ZIndex=11;text.TextWrapped=true
-                    local toggle=button(field,'',UDim2.new(1,-66,.5,-14),UDim2.fromOffset(54,28));toggle.ZIndex=11
-                    Hub:SkinToggle(toggle,entry.value)
-                    toggle.Activated:Connect(function()choose(entry,not entry.value)end)
-                elseif entry.kind=='Input'then
-                    local field=make('Frame',list,{LayoutOrder=index,Size=UDim2.new(1,-4,0,h),BackgroundColor3=colors.Raised,BorderSizePixel=0,ZIndex=10});round(field,9)
-                    local text=label(field,caption,14,UDim2.fromOffset(10,2),UDim2.new(1,-20,0,34));text.TextWrapped=true;text.ZIndex=11
-                    local input=box(field,'Value',UDim2.fromOffset(10,40),UDim2.new(1,-20,0,36));input.Text=tostring(entry.value or '');input.ZIndex=11
-                    refinedField(input)
-                    input.Focused:Connect(function()self.CommitInput=function()onSelect(entry,input.Text)end end)
-                    input.FocusLost:Connect(function()self.CommitInput=nil;choose(entry,input.Text)end)
-                else
-                    local option=button(list,'',nil,UDim2.new(1,-4,0,h));option.Name='DropdownOption';option.LayoutOrder=index;option.ZIndex=10
-                    round(option,8)
-                    local paint=option:FindFirstChildOfClass('UIGradient');if paint then paint.Enabled=false end
-                    local selected=entry.selected==true
-                    option:SetAttribute('ControlStyle','SoftRow01')
-                    local function surface()return selected and colors.Raised:Lerp(accent,.14)or colors.Panel end
-                    option.BackgroundTransparency=0
-                    option:SetAttribute('InitialOptionVisible',true)
-                    themed(option,'BackgroundColor3',surface)
-                    option.MouseEnter:Connect(function()tween(option,{BackgroundTransparency=0,BackgroundColor3=surface():Lerp(accent,selected and .055 or .045)},.2)end)
-                    option.MouseLeave:Connect(function()tween(option,{BackgroundTransparency=0,BackgroundColor3=surface()},.25)end)
-                    if entry.selected then
-                        option:SetAttribute('SelectedOption',true)
-                        local light=make('Frame',option,{Name='SelectedLight',AnchorPoint=Vector2.new(1,0),Position=UDim2.fromScale(1,0),Size=UDim2.new(0,14,1,0),BackgroundColor3=accent,BackgroundTransparency=.72,BorderSizePixel=0,ZIndex=11})
-                        round(light,8)
-                        make('UIGradient',light,{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(1,.25)})})
-                        local edge=make('Frame',option,{Name='SelectionEdge',AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-1,.5,0),Size=UDim2.new(0,2,1,-8),BackgroundColor3=accent:Lerp(Color3.new(1,1,1),.4),BackgroundTransparency=.2,BorderSizePixel=0,ZIndex=12});round(edge,2)
-                        make('UIGradient',edge,{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.2,.1),NumberSequenceKeypoint.new(.8,.1),NumberSequenceKeypoint.new(1,1)})})
-                    end
-                    if entry.visual then
-                        gameThumbnail(option,entry.visual,UDim2.fromOffset(8,12),UDim2.fromOffset(58,58),11)
-                        local text=label(option,caption,15,UDim2.fromOffset(76,5),UDim2.new(1,-88,0,36));text.ZIndex=12;text.TextWrapped=true
-                        if entry.detail and entry.detail~=''then local detail=label(option,entry.detail,12,UDim2.fromOffset(76,43),UDim2.new(1,-88,0,43),true);detail.ZIndex=12;detail.TextWrapped=true end
-                    else
-                        local text=label(option,caption,15,UDim2.fromOffset(12,0),UDim2.new(1,-24,1,0));text.Name='OptionCaption';text.ZIndex=12;text.TextWrapped=true
-                    end
-                    option.Activated:Connect(function()choose(entry)end)
-                end
-                total+=h+3
-            end
-            local limit=(UIS.TouchEnabled or Hub.TouchPreview)and math.max(88,math.min(246,(root.AbsoluteSize.Y-160)/math.max(.1,windowScale.Scale)))or 246
-            local height=math.min(math.max(40,total-3),limit)
-            fade.Size=UDim2.new(1,0,0,height)
-            tween(dropdown,{Size=UDim2.new(1,-36,0,height)},.28)
-            tween(row,{Size=UDim2.new(self.RowWidth.Scale,self.RowWidth.Offset,0,self.BaseHeight+height+10)},.28)
-            list.CanvasPosition=position
-            if not self.Revealed then
-                self.Revealed=true
-                task.defer(function()
-                    if self.Closed or inlineRequest~=self or not dropdown.Parent then return end
-                    local outer=row:FindFirstAncestorWhichIsA('ScrollingFrame')
-                    if not outer then return end
-                    local scale=math.max(windowScale.Scale,.1)
-                    local overflow=row.AbsolutePosition.Y+(self.BaseHeight+height+10)*scale-(outer.AbsolutePosition.Y+outer.AbsoluteWindowSize.Y-10)
-                    if overflow>0 then
-                        local limit=math.max(0,(outer.AbsoluteCanvasSize.Y-outer.AbsoluteWindowSize.Y)/scale+height+10)
-                        tween(outer,{CanvasPosition=Vector2.new(outer.CanvasPosition.X,math.clamp(outer.CanvasPosition.Y+overflow/scale,0,limit))},.28)
-                    end
-                end)
-            end
-        end
-        render(entries)
-    end
-    return context
-end
-Hub:OnCleanup(function()Hub:CloseInlineChoices(true)end)
-connect(UIS.InputBegan,function(input)
-    if not inlineRequest then return end
-    if input.KeyCode==Enum.KeyCode.Escape then Hub:CloseInlineChoices();return end
-    if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
-    local row=inlineRequest.Row
-    if not row.Parent then Hub:CloseInlineChoices(true);return end
-    local p,s=row.AbsolutePosition,row.AbsoluteSize
-    local point=input.Position
-    if point.X<p.X or point.X>p.X+s.X or point.Y<p.Y or point.Y>p.Y+s.Y then Hub:CloseInlineChoices()end
-end)
-local function selectorArrow(button)
-    make('UIPadding',button,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,34)})
-    button.TextXAlignment=Enum.TextXAlignment.Left
-    local arrow=make('ImageLabel',button,{Name='DropdownChevron',AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,22,.5,0),Size=UDim2.fromOffset(14,14),BackgroundTransparency=1,Image='rbxassetid://7733717447',ImageColor3=colors.Text,ZIndex=button.ZIndex+1})
-    button:GetAttributeChangedSignal('DropdownOpen'):Connect(function()tween(arrow,{Rotation=button:GetAttribute('DropdownOpen')and 180 or 0},.2)end)
-end
-
--- Related game values share one compact panel instead of one card per field.
-Hub.GroupGameControls=true
-Hub.CollapsedGameGroups=Hub.CollapsedGameGroups or {}
-function Hub:RenderGroupedTools(items,parent)
-    local updateGuideBanner
-    local layout=make('UIListLayout',parent,{Padding=UDim.new(0,14),SortOrder=Enum.SortOrder.LayoutOrder})
-    if items[1]and items[1].Category=='Auto Play'and self.OpenSetupGuide then
-        local banner=make('Frame',parent,{Name='SetupGuideBanner',LayoutOrder=-1,Size=UDim2.new(1,-2,0,76),BackgroundColor3=colors.Panel,BorderSizePixel=0});round(banner,16)
-        Hub:StyleSurface(banner,'panel')
-        local mark=make('Frame',banner,{Position=UDim2.fromOffset(14,18),Size=UDim2.fromOffset(36,36),BackgroundColor3=colors.Raised,BorderSizePixel=0});round(mark,11)
-        if drawIcon then drawIcon(mark,'layers',false,true)end
-        local title=label(banner,'Setup Guide',20,UDim2.fromOffset(62,10),UDim2.new(1,-234,0,28))
-        local detail=label(banner,'Plan or Macro · 5 steps',14,UDim2.fromOffset(62,40),UDim2.new(1,-234,0,24),true)
-        local start=pill(banner,'Open guide',UDim2.new(1,-164,.5,-19),UDim2.fromOffset(148,38));start.Name='OpenSetupGuide';start.Activated:Connect(function()Hub:OpenSetupGuide()end)
-        updateGuideBanner=function()
-            local stacked=window.Size.X.Offset<620
-            banner.Size=UDim2.new(1,-2,0,stacked and 132 or 76)
-            title.Size=UDim2.new(1,stacked and -80 or -234,0,28)
-            detail.Size=UDim2.new(1,stacked and -80 or -234,0,24)
-            local buttonHeight=(UIS.TouchEnabled or Hub.TouchPreview)and 44 or 38
-            start.Position=stacked and UDim2.new(0,14,1,-54)or UDim2.new(1,-164,.5,-buttonHeight/2)
-            start.Size=stacked and UDim2.new(1,-28,0,44)or UDim2.fromOffset(148,buttonHeight)
-        end
-        updateGuideBanner()
-    end
-    local columns=make('Frame',parent,{Name='GameColumns',Size=UDim2.new(1,-2,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-    local left=make('Frame',columns,{Name='LeftColumn',Size=UDim2.new(.5,-7,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-    local right=make('Frame',columns,{Name='RightColumn',Position=UDim2.new(.5,7,0,0),Size=UDim2.new(.5,-7,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-    for _,column in ipairs({left,right})do make('UIListLayout',column,{Padding=UDim.new(0,14),SortOrder=Enum.SortOrder.LayoutOrder})end
-    local estimates={0,0}
-    local groups,order={},{}
-    for _,item in ipairs(items)do
-        local key=item.Group or item.Category
-        if not groups[key]then groups[key]={};order[#order+1]=key end
-        groups[key][#groups[key]+1]=item
-    end
-    for groupIndex,key in ipairs(order)do
-        local values=groups[key]
-        table.sort(values,function(a,b)return(a.ControlOrder or 0)<(b.ControlOrder or 0)end)
-        local side=estimates[1]<=estimates[2]and 1 or 2
-        local panel=make('Frame',side==1 and left or right,{Name='GameGroup_'..key,LayoutOrder=groupIndex,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=colors.Panel,BorderSizePixel=0})
-        round(panel,20)
-        Hub:StyleSurface(panel,'panel')
-        make('UIListLayout',panel,{Padding=UDim.new(0,9),HorizontalAlignment=Enum.HorizontalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder})
-        make('UIPadding',panel,{PaddingTop=UDim.new(0,10),PaddingBottom=UDim.new(0,16)})
-        local header=make('Frame',panel,{Name='SectionHeader',LayoutOrder=0,Size=UDim2.new(1,-20,0,54),BackgroundColor3=Color3.fromRGB(29,28,33),BorderSizePixel=0});round(header,14)
-        Hub:StyleSurface(header,'header')
-        local well=make('Frame',header,{Position=UDim2.fromOffset(12,13),Size=UDim2.fromOffset(32,32),BackgroundColor3=Color3.fromRGB(42,38,51),BorderSizePixel=0});round(well,10)
-        well.Position=UDim2.fromOffset(10,11);Hub:StyleSurface(well,'header')
-        local keyLower=key:lower()
-        local glyph=keyLower:find('team')and'grid'or keyLower:find('destination')and'movement'or keyLower:find('match')and'activity'or keyLower:find('macro')and'terminal'or keyLower:find('weather')and'sun'or keyLower:find('banner')and'sparkles'or keyLower:find('trait')and'sparkles'or keyLower:find('shop')and'utility'or keyLower:find('webhook')and'command'or'layers'
-        if drawIcon then drawIcon(well,glyph,false,true)end
-        local heading=label(header,key,17,UDim2.fromOffset(54,5),UDim2.new(1,-102,0,44));heading.TextWrapped=true
-        heading.Font=CONFIG.HeadingFont
-        local fold=button(header,'',UDim2.new(1,-44,0,13),UDim2.fromOffset(32,32));fold.Name='CollapseGroup'
-        local foldIcon=drawIcon and drawIcon(fold,'collapse',false,true)
-        fold.BackgroundTransparency=1;fold.Position=UDim2.new(1,-42,0,11)
-        local stateKey=tostring(values[1].Category)..'/'..key
-        local collapsed=Hub.CollapsedGameGroups[stateKey]==true
-        local viewport=make('Frame',panel,{Name='GroupBodyClip',LayoutOrder=1,Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,ClipsDescendants=true})
-        local body=make('Frame',viewport,{Name='GroupBody',Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-        local bodyLayout=make('UIListLayout',body,{Padding=UDim.new(0,9),SortOrder=Enum.SortOrder.LayoutOrder})
-        local function updateFold(animate)
-            -- AbsoluteContentSize is in screen pixels; viewport offsets are pre-UIScale.
-            local scale=math.max(.01,windowScale.Scale)
-            local height=collapsed and 0 or math.ceil(bodyLayout.AbsoluteContentSize.Y/scale)
-            viewport:SetAttribute('Collapsed',collapsed)
-            fold:SetAttribute('Collapsed',collapsed)
-            if animate then
-                tween(viewport,{Size=UDim2.new(1,0,0,height)},.28)
-                if foldIcon then tween(foldIcon,{Rotation=collapsed and 180 or 0},.28)end
-            else
-                viewport.Size=UDim2.new(1,0,0,height)
-                if foldIcon then foldIcon.Rotation=collapsed and 180 or 0 end
-            end
-            body.Interactable=not collapsed
-        end
-        fold.Activated:Connect(function()
-            if Hub.CloseInlineChoices then Hub:CloseInlineChoices()end
-            collapsed=not collapsed;Hub.CollapsedGameGroups[stateKey]=collapsed;updateFold(true)
-        end)
-        bodyLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()if not collapsed then updateFold(false)end end)
-        local scaleWatch=windowScale:GetPropertyChangedSignal('Scale'):Connect(function()
-            task.defer(function()if viewport.Parent then updateFold(false)end end)
-        end)
-        panel.Destroying:Once(function()scaleWatch:Disconnect()end)
-        local y=76
-        local pairedFields
-        for index,item in ipairs(values)do
-            local hasDescription=item.Description and item.Description~=''
-            local stacked=item.Kind=='Select'
-            local height=item.Kind=='Team'and 332 or(item.Kind=='Gallery'and 214 or(item.Kind=='Slider'and 78 or(stacked and(hasDescription and 112 or 78)or(hasDescription and 88 or 58))))
-            if item.Group=='Plan review'and item.Kind=='Status'then height=116 end
-            local rowOwner,rowSize,rowPosition=body,UDim2.new(1,0,0,height),UDim2.new()
-            if item.Category=='Summon'and item.Kind=='Select'and(item.Name=='Banner'or item.Name=='Batch')then
-                if not pairedFields then pairedFields=make('Frame',body,{Name='SummonQuickFields',LayoutOrder=index,Size=UDim2.new(1,0,0,height),BackgroundTransparency=1})end
-                rowOwner=pairedFields;rowSize=UDim2.new(.5,-3,0,height)
-                rowPosition=item.Name=='Batch'and UDim2.new(.5,3,0,0)or UDim2.new()
-            end
-            local row=make('Frame',rowOwner,{Name=item.Id,LayoutOrder=index,Position=rowPosition,Size=rowSize,BackgroundTransparency=1,ClipsDescendants=true})
-            if rowOwner==pairedFields then
-                row:GetPropertyChangedSignal('Size'):Connect(function()
-                    local tallest=0
-                    for _,field in ipairs(pairedFields:GetChildren())do if field:IsA('Frame')then tallest=math.max(tallest,field.Size.Y.Offset)end end
-                    if pairedFields.Size.Y.Offset~=tallest then pairedFields.Size=UDim2.new(1,0,0,tallest)end
-                end)
-            end
-            local name=label(row,item.Name,16,UDim2.fromOffset(18,hasDescription and 5 or 0),UDim2.new(.56,-30,0,hasDescription and 28 or height))
-            name.TextWrapped=true;name.TextTruncate=Enum.TextTruncate.None
-            local namePaint=name:FindFirstChildWhichIsA('UIGradient');if namePaint then namePaint.Enabled=false end
-            name.TextColor3=colors.Text
-            if hasDescription then
-                local description=label(row,item.Description,14,UDim2.fromOffset(18,34),UDim2.new(1,-100,0,44),true)
-                description.TextWrapped=true
-            end
-            local controlPos=UDim2.new(.58,0,.5,-18)
-            local controlSize=UDim2.new(.42,-18,0,36)
-            if stacked then
-                name.Position=UDim2.fromOffset(18,0);name.Size=UDim2.new(1,-36,0,34)
-                controlPos=UDim2.fromOffset(18,hasDescription and 72 or 34);controlSize=UDim2.new(1,-36,0,36)
-            elseif item.Kind=='Toggle'then
-                name.Size=UDim2.new(1,-100,0,hasDescription and 30 or height)
-            end
-            if item.Kind=='Button'or item.Kind=='Input'then
-                name.Position=UDim2.fromOffset(18,0);name.Size=UDim2.new(.47,-18,0,hasDescription and 32 or height)
-                controlPos=UDim2.new(.49,0,0,hasDescription and 6 or 11);controlSize=UDim2.new(.51,-18,0,36)
-            end
-            if item.Kind=='NameList'then
-                name.Position=UDim2.fromOffset(18,0);name.Size=UDim2.new(1,-36,0,30)
-                local input=box(row,'Username, or multiple names',UDim2.fromOffset(18,34),UDim2.new(1,-112,0,36));input.Name='PartyNameInput';refinedField(input)
-                local add=pill(row,'Add',UDim2.new(1,-86,0,34),UDim2.fromOffset(68,36));add.Name='PartyNameAdd'
-                local entries=make('Frame',row,{Name='SavedNames',Position=UDim2.fromOffset(18,80),Size=UDim2.new(1,-36,0,0),BackgroundTransparency=1})
-                local lastValue
-                local function paint()
-                    if not row.Parent then return end
-                    local ok,list=pcall(item.Options);if not ok then return end
-                    local signature=tostring(item.Value or'');if lastValue==signature then return end;lastValue=signature
-                    entries:ClearAllChildren()
-                    for n,entry in ipairs(list)do
-                        local tile=make('Frame',entries,{Name='SavedPartyName',Position=UDim2.fromOffset(0,(n-1)*42),Size=UDim2.new(1,0,0,36),BackgroundColor3=colors.Raised,BorderSizePixel=0});round(tile,10)
-                        local caption=label(tile,'@'..entry.name,15,UDim2.fromOffset(12,0),UDim2.new(1,-96,1,0));caption.TextTruncate=Enum.TextTruncate.AtEnd
-                        local remove=pill(tile,'Remove',UDim2.new(1,-80,0,4),UDim2.fromOffset(74,28));remove.Name='RemoveSavedName'
-                        remove.Activated:Connect(function()runItem(item,{Action='Remove',Name=entry.id},function()item.Value=item.GetValue();paint()end)end)
-                    end
-                    if #list==0 then label(entries,'No saved usernames',14,UDim2.new(),UDim2.new(1,0,0,28),true)end
-                    local listHeight=math.max(28,#list*42)
-                    entries.Size=UDim2.new(1,-36,0,listHeight);row.Size=UDim2.new(1,0,0,88+listHeight)
-                end
-                item.UpdateView=paint;paint()
-                local function submit()
-                    if input.Text:match('^%s*$')then return end
-                    runItem(item,{Action='Add',Names=input.Text},function(ok)if ok then input.Text=''end;item.Value=item.GetValue();paint()end)
-                end
-                add.Activated:Connect(submit)
-                input.FocusLost:Connect(function(enter)if enter then submit()end end)
-            elseif item.Kind=='Team'then
-                name.Visible=false;Hub:RenderTeamGrid(row,item)
-            elseif item.Kind=='Gallery'then
-                name.Visible=false
-                Hub:RenderGameGallery(row,item)
-            elseif item.Kind=='Status'then
-                name.Visible=false
-                local inset=make('Frame',row,{Name='StatusWell',Position=UDim2.fromOffset(14,4),Size=UDim2.new(1,-28,1,-8),BackgroundColor3=Color3.fromRGB(9,9,10),BorderSizePixel=0});round(inset,12)
-                local message=label(inset,tostring(item.Value or ''),13,UDim2.fromOffset(12,4),UDim2.new(1,-24,1,-8),true)
-                message.TextWrapped=true;message.TextTruncate=Enum.TextTruncate.None
-                item.UpdateView=function()if row.Parent then message.Text=tostring(item.Value or '')end end
-            elseif item.Kind=='Slider'then
-                name.Position=UDim2.fromOffset(18,0);name.Size=UDim2.new(.7,-18,0,32)
-                local number=label(row,tostring(item.Value or 0),15,UDim2.new(.7,0,0,0),UDim2.new(.3,-18,0,32))
-                number.TextXAlignment=Enum.TextXAlignment.Right
-                local display=slider(row,53,item.Min,item.Max,item.Value,item.Step,function(value)item.Editing=true;item.Value=value;number.Text=string.format('%g',value)end,function()item.Editing=false;runItem(item,item.Value)end)
-                item.UpdateView=function()if row.Parent then local value=tonumber(item.Value)or 0;number.Text=string.format('%g',value);display(value,true)end end
-            elseif item.Kind=='Toggle'then
-                local toggle=button(row,'',UDim2.new(1,-74,.5,-14),UDim2.fromOffset(54,28));toggle.Name='GameToggle';round(toggle,20)
-                local paintSwitch=Hub:SkinToggle(toggle,item.Value)
-                item.UpdateView=function()
-                    if row.Parent then paintSwitch(item.Value)end
-                end
-                item.UpdateView()
-                toggle.Activated:Connect(function()
-                    if item.Busy then return end
-                    local before=item.Value;item.Value=not before;item.UpdateView()
-                    runItem(item,item.Value,function(ok)
-                        if not ok then item.Value=before end
-                        if item.GetValue then local got,v=pcall(item.GetValue);if got then item.Value=v end end
-                        item.UpdateView()
-                    end)
-                end)
-            elseif item.Kind=='Input'then
-                local input=box(row,'Value',controlPos,controlSize);input.Name='GameInput';input.Text=tostring(item.Value or '')
-                refinedField(input)
-                local function displayValue()return item.Secret and item.Value~=''and'Saved URL · click to edit'or tostring(item.Value or '')end
-                input.Text=displayValue()
-                if item.Secret then input.Focused:Connect(function()input.Text=tostring(item.Value or '')end)end
-                item.UpdateView=function()if row.Parent and not input:IsFocused()then input.Text=displayValue()end end
-                input.FocusLost:Connect(function()
-                    local value=input.Text
-                    runItem(item,value,function()
-                        item.Value=value
-                        if item.GetValue then local got,v=pcall(item.GetValue);if got then item.Value=v end end
-                        item.UpdateView()
-                    end)
-                end)
-            elseif item.Kind=='Select'then
-                local select=button(row,tostring(item.Value or 'Select…'),controlPos,controlSize);select.Name='GameSelect'
-                refinedField(select)
-                selectorArrow(select)
-                select.TextTruncate=Enum.TextTruncate.AtEnd
-                item.UpdateView=function()if row.Parent then select.Text=tostring(item.Value or 'Select…')end end
-                select.Activated:Connect(function()
-                    local context=Hub:InlineContext(row,height,select)
-                    if not context then return end
-                    local ok,entries=pcall(item.Options or function()return {}end)
-                    if not ok then Hub:CloseInlineChoices();Hub:Notify('Options are not ready yet');return end
-                    for _,entry in ipairs(entries)do if type(entry)=='table'and entry.selected==nil then entry.selected=tostring(entry.name or entry.id)==tostring(item.Value)end end
-                    context:OpenChoices(item.Name,entries,function(entry)
-                        if item.Callback then item.Callback(entry,context)end
-                        if item.GetValue then local got,value=pcall(item.GetValue);if got then item.Value=value end end
-                        item.UpdateView()
-                    end,false)
-                end)
-            else
-                local function caption()
-                    if item.GetValue then return tostring(item.Value or '')end
-                    if item.ActionLabel then return item.ActionLabel end
-                    -- Preserve established action verbs; other buttons state their actual action.
-                    local name=tostring(item.Name or '')
-                    if name:match('^Save')then return 'Save'end
-                    if name:match('^Load')then return 'Load'end
-                    if name:match('^Refresh')then return 'Refresh'end
-                    if name:match('^Delete')then return 'Delete'end
-                    return name~=''and name or 'Open'
-                end
-                local action=item.HasChoices and button(row,caption(),controlPos,controlSize)or pill(row,caption(),controlPos,controlSize);action.Name='GameAction'
-                if item.HasChoices then refinedField(action)end
-                if item.HasChoices then selectorArrow(action)end
-                item.UpdateView=function()if row.Parent then action.Text=item.Busy and'Working…'or caption()end end
-                action.Activated:Connect(function()
-                    if item.Busy then return end
-                    local context=Hub:InlineContext(row,height,action)
-                    if not context then return end
-                    action.Text='Working…';runItem(item,nil,function()item.UpdateView()end,context)
-                end)
-            end
-            y=y+height+3
-        end
-        updateFold(false)
-        estimates[side]+=y+12
-
-    end
-    local function responsive()
-        if updateGuideBanner then updateGuideBanner()end
-        local single=window.Size.X.Offset<620
-        left.Size=UDim2.new(single and 1 or .5,single and 0 or -7,0,0)
-        right.Visible=not single
-        for _,column in ipairs({left,right})do
-            for _,panel in ipairs(column:GetChildren())do
-                if panel:IsA('Frame')and panel.Name:match('^GameGroup_')then
-                    if panel:GetAttribute('PreferredSide')==nil then panel:SetAttribute('PreferredSide',column==left and 1 or 2)end
-                    panel.Parent=single and left or(panel:GetAttribute('PreferredSide')==1 and left or right)
-                end
-            end
-        end
-    end
-    responsive()
-    local watch=window:GetPropertyChangedSignal('Size'):Connect(responsive)
-    columns.Destroying:Once(function()watch:Disconnect()end)
-    return layout
-end
-
-local function drawItem(item, order, parent, wide)
-    local row = frameRow(wide and 104 or 180)
-    if parent then row.Parent = parent; row.Size = UDim2.new(0.5, -8, 1, 0) end
-    row.Name = item.Id
-    row.LayoutOrder = order
-    local hoverBorder = row:FindFirstChildOfClass("UIStroke")
-    row.MouseEnter:Connect(function() tween(hoverBorder, { Color = accentBorder() }, 0.2) end)
-    row.MouseLeave:Connect(function() tween(hoverBorder, { Color = colors.Border }, 0.24) end)
-    local revealScale = make("UIScale", row, { Scale = 1 })
-    row.MouseEnter:Connect(function() tween(revealScale, { Scale = reducedMotion and 1 or 1.008 }, 0.25) end)
-    row.MouseLeave:Connect(function() tween(revealScale, { Scale = 1 }, 0.3) end)
-    if not reducedMotion then
-        revealScale.Scale = 0.96
-        row.GroupTransparency = 1
-        task.delay(math.min(order - 1, 6) * 0.035, function()
-            if Hub.Alive and row.Parent then
-                tween(row, { GroupTransparency = 0 }, 0.25)
-                tween(revealScale, { Scale = 1 }, 0.4, Enum.EasingStyle.Back)
-            end
-        end)
-    end
-    local badge = make("Frame", row, { Position = UDim2.fromOffset(18, 20), Size = UDim2.fromOffset(46, 46), BorderSizePixel = 0 })
-    round(badge, 14)
-    themed(badge, "BackgroundColor3", softAccent)
-    local badgeBorder = stroke(badge); badgeBorder.Transparency = 0.35
-    themed(badgeBorder, "Color", accentBorder)
-    if drawIcon then drawIcon(badge, ({ performance = "activity", clock = "clock", brightness = "sun", welcome = "terminal" })[item.Id] or "utility", false) end
-    label(row, item.Name, 16, UDim2.fromOffset(78, 17), UDim2.new(1, wide and -310 or -132, 0, 26))
-    label(row, item.Category:upper(), 10, UDim2.fromOffset(78, 45), UDim2.new(1, wide and -310 or -132, 0, 18), true)
-    local star = button(row, "", UDim2.new(1, -48, 0, 18), UDim2.fromOffset(32, 32))
-    star.Name = "Favorite"
-    star.BackgroundTransparency = 1
-    local favoriteIcon = drawIcon and drawIcon(star, "favorite", false)
-    if favoriteIcon then favoriteIcon.Size = UDim2.fromOffset(18, 18); favoriteIcon.ImageTransparency = favorites[item.Id] and 0 or 0.55 end
-    star.Activated:Connect(function()
-        favorites[item.Id] = not favorites[item.Id]
-        if favoriteIcon then tween(favoriteIcon, { ImageTransparency = favorites[item.Id] and 0 or 0.55 }, 0.15) end
-        if page == "Favorites" then refresh(false) end
-    end)
-    local description = label(row, item.Description, 15, UDim2.fromOffset(wide and 78 or 18, wide and 68 or 79), UDim2.new(1, wide and -310 or -36, 0, wide and 22 or 36), true)
-    description.TextWrapped = true
-    description.TextTruncate = Enum.TextTruncate.None
-    local separator = make("Frame", row, { Position = UDim2.fromOffset(18, 120), Size = UDim2.new(1, -36, 0, 1), BackgroundColor3 = colors.Border, BackgroundTransparency = 0.6, BorderSizePixel = 0 })
-    separator.Visible = not wide
-    if wide then make("Frame", row, { Position = UDim2.new(1, -222, 0, 24), Size = UDim2.fromOffset(1, 56), BackgroundColor3 = colors.Border, BackgroundTransparency = 0.6, BorderSizePixel = 0 }) end
-    if item.Kind == "Input" or item.Kind == "Select" then
-        drawGameField(item,row,wide)
-    elseif item.Kind == "Slider" then
-        local number = label(row, string.format("%g%s", item.Value, item.Suffix or ""), 14, UDim2.new(1, -110, 0, 126), UDim2.fromOffset(90, 24))
-        number.TextXAlignment = Enum.TextXAlignment.Right
-        slider(row, 156, item.Min, item.Max, item.Value, item.Step, function(v)
-            item.Value = v
-            number.Text = string.format("%g%s", v, item.Suffix or "")
-        end, function()
-            local value = item.Value
-            runItem(item, value, function(ok) if ok then item.AppliedValue = value end end)
-        end)
-    elseif item.Kind == "Toggle" then
-        local switch = button(row, "", UDim2.new(1, wide and -88 or -76, 0, wide and 46 or 135), UDim2.fromOffset(54, 28))
-        switch.Name = "Toggle"
-        round(switch, 20)
-        local dot = make("Frame", switch, { Position = UDim2.fromOffset(item.Value and 29 or 4, 4), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = colors.Text, BorderSizePixel = 0 })
-        round(dot, 20)
-        themed(switch, "BackgroundColor3", function() return item.Value and accent:Lerp(colors.Background, 0.48) or colors.Raised end)
-        local stateLabel = label(row, item.Value and "●  Enabled" or "○  Disabled", 12, wide and UDim2.new(1, -206, 0, 44) or UDim2.fromOffset(18, 132), wide and UDim2.fromOffset(108, 32) or UDim2.new(1, -110, 0, 32), true)
-        item.UpdateView=function()
-            if row.Parent and not item.Busy then
-                stateLabel.Text=item.Value and "●  Enabled" or "○  Disabled"
-                tween(dot,{Position=UDim2.fromOffset(item.Value and 29 or 4,4)},.2)
-                tween(switch,{BackgroundColor3=item.Value and accent:Lerp(colors.Background,.48)or colors.Raised},.2)
-            end
-        end
-        switch.Activated:Connect(function()
-            if item.Busy then return end
-            local before, target = item.Value, not item.Value
-            item.Value = target
-            tween(dot, { Position = UDim2.fromOffset(target and 29 or 4, 4) }, 0.23)
-            tween(switch, { BackgroundColor3 = target and accent:Lerp(colors.Background, 0.48) or colors.Raised }, 0.2)
-            stateLabel.Text = "Applying..."
-            runItem(item, target, function(ok)
-                if not ok then item.Value = before end
-                if row.Parent then
-                    stateLabel.Text = item.Value and "●  Enabled" or "○  Disabled"
-                    tween(dot, { Position = UDim2.fromOffset(item.Value and 29 or 4, 4) }, 0.2)
-                    tween(switch, { BackgroundColor3 = item.Value and accent:Lerp(colors.Background, 0.48) or colors.Raised }, 0.2)
-                end
-            end)
-        end)
-    else
-        local launch = pill(row, item.Busy and "Working..." or "Launch  →", wide and UDim2.new(1, -198, 0, 44) or UDim2.fromOffset(18, 131), wide and UDim2.fromOffset(164, 36) or UDim2.new(1, -36, 0, 34))
-        launch.Name = "Launch"
-        item.UpdateView = function()
-            if launch.Parent then launch.Text = item.Busy and "Working..." or "Launch  →" end
-        end
-        launch.Activated:Connect(function()
-            if item.Busy then return end
-            launch.Text = "Working..."
-            runItem(item, nil, function(ok)
-                if launch.Parent then launch.Text = ok and "Done  ✓" or "Try again" end
-                task.delay(1, function() if Hub.Alive and launch.Parent and not item.Busy then launch.Text = "Launch  →" end end)
-            end)
-        end)
-    end
-end
-
-local preferences={FPSLimit=60,Disable3D=false,HideUser=true,Scale=1,ToggleKey='RightShift',ShowIcon=true,PrivacyName='Fyrelith'}
-local preferencePath='.FYRELITH-Default-20261104/Interface.json'
-local HttpService=game:GetService('HttpService')
-if type(readfile)=='function' then
-    local ok,data=pcall(function()return HttpService:JSONDecode(readfile(preferencePath))end)
-    if ok and type(data)=='table'then
-        if type(data.FPSLimit)=='number'then preferences.FPSLimit=math.clamp(math.floor(data.FPSLimit),10,240)end
-        if type(data.Scale)=='number'then preferences.Scale=math.clamp(data.Scale,.75,1.3)end
-        if type(data.Disable3D)=='boolean'then preferences.Disable3D=data.Disable3D end
-        if type(data.HideUser)=='boolean'then preferences.HideUser=data.HideUser end
-        if type(data.ShowIcon)=='boolean'then preferences.ShowIcon=data.ShowIcon end
-        if type(data.ToggleKey)=='string'then local valid,key=pcall(function()return Enum.KeyCode[data.ToggleKey]end);if valid and key and key~=Enum.KeyCode.Unknown and key~=Enum.KeyCode.Escape then preferences.ToggleKey=data.ToggleKey end end
-        if type(data.PrivacyName)=='string'and data.PrivacyName~=''and not data.PrivacyName:find('[%c]')and(utf8.len(data.PrivacyName)or math.huge)<=32 then preferences.PrivacyName=data.PrivacyName end
-    end
-end
-preferences.PrivacyName=preferences.PrivacyName:match('^%s*(.-)%s*$')
-if preferences.PrivacyName==''then preferences.PrivacyName='Fyrelith'end
-CONFIG.ToggleKey=Enum.KeyCode[preferences.ToggleKey]
-keyHint.Text=CONFIG.ToggleKey.Name..' to toggle'
-Hub.IconVisible=preferences.ShowIcon
-Hub.InterfacePreferences=preferences
-local function persistInterface()
-    if type(writefile)~='function'then return false end
-    if type(makefolder)=='function'then pcall(makefolder,'.FYRELITH-Default-20261104')end
-    return pcall(writefile,preferencePath,HttpService:JSONEncode(preferences))
-end
-local rendering=game:GetService('RunService')
-local coreGui=game:GetService('CoreGui')
-local blackScreen=make('ScreenGui',playerGui,{Name='FyrelithBlackScreen',IgnoreGuiInset=true,DisplayOrder=90,ResetOnSpawn=false,Enabled=false})
-pcall(function()blackScreen.ScreenInsets=Enum.ScreenInsets.None end)
-make('Frame',blackScreen,{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BorderSizePixel=0})
-local originalText=setmetatable({},{__mode='k'})
-local maskedText=setmetatable({},{__mode='k'})
-local originalHumanoids=setmetatable({},{__mode='k'})
-local watching=setmetatable({},{__mode='k'})
-local updating=false
-local function anonymize(text)
-    local result=tostring(text)
-    for _,name in ipairs({player.DisplayName,player.Name})do
-        if #name>0 then result=result:gsub(name:gsub('([^%w])','%%%1'),function()return preferences.PrivacyName end)end
-    end
-    return result
-end
-local function watchIdentity(node)
-    if watching[node]then watching[node]();return end
-    if node:IsA('Humanoid')then
-        if node.Parent~=player.Character then return end
-        originalHumanoids[node]={Name=node.DisplayName,Distance=node.DisplayDistanceType}
-        local function paintHumanoid()
-            if updating or not preferences.HideUser then return end
-            updating=true;node.DisplayName=preferences.PrivacyName;node.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None;updating=false
-        end
-        local a=node:GetPropertyChangedSignal('DisplayName'):Connect(paintHumanoid)
-        watching[node]=paintHumanoid
-        local b=node:GetPropertyChangedSignal('DisplayDistanceType'):Connect(paintHumanoid)
-        table.insert(cleanupTasks,function()a:Disconnect();b:Disconnect()end)
-        paintHumanoid();return
-    end
-    if not(node:IsA('TextLabel')or node:IsA('TextButton'))then return end
-    local function paint()
-        if updating then return end
-        local value=node.Text
-        if preferences.HideUser then
-            local source=originalText[node]and value==maskedText[node]and originalText[node]or value
-            local masked=anonymize(source)
-            if masked~=source then
-                originalText[node]=source;maskedText[node]=masked
-                if masked~=value then updating=true;node.Text=masked;updating=false end
-            else
-                originalText[node]=nil;maskedText[node]=nil
-            end
-        end
-    end
-    local watch=node:GetPropertyChangedSignal('Text'):Connect(paint)
-    watching[node]=paint
-    node.Destroying:Once(function()watch:Disconnect()end)
-    table.insert(cleanupTasks,function()watch:Disconnect()end)
-    paint()
-end
-local function applyPrivacy()
-    if preferences.HideUser then
-        for _,node in ipairs(playerGui:QueryDescendants('TextLabel, TextButton'))do watchIdentity(node)end
-        local playerList=coreGui:FindFirstChild('PlayerList')
-        if playerList then for _,node in ipairs(playerList:QueryDescendants('TextLabel, TextButton'))do watchIdentity(node)end end
-        if player.Character then for _,node in ipairs(player.Character:QueryDescendants('TextLabel, TextButton, Humanoid'))do watchIdentity(node)end end
-    else
-        updating=true
-        for node,text in pairs(originalText)do if node.Parent then node.Text=text end end
-        for node,data in pairs(originalHumanoids)do if node.Parent then node.DisplayName=data.Name;node.DisplayDistanceType=data.Distance end end
-        table.clear(originalText);table.clear(maskedText);updating=false
-    end
-end
-function Hub:SetPrivacyName(value)
-    value=tostring(value or''):match('^%s*(.-)%s*$')
-    if value==''then value='Fyrelith'end
-    assert(not value:find('[%c]')and(utf8.len(value)or math.huge)<=32,'Use a display name of up to 32 characters')
-    preferences.PrivacyName=value;applyPrivacy();persistInterface()
-    return value
-end
-function Hub:SetToggleKey(key)
-    assert(typeof(key)=='EnumItem'and key.EnumType==Enum.KeyCode and key~=Enum.KeyCode.Unknown and key~=Enum.KeyCode.Escape,'Choose a keyboard key')
-    CONFIG.ToggleKey=key;preferences.ToggleKey=key.Name;keyHint.Text=key.Name..' to toggle';persistInterface()
-end
-function Hub:AcceptToggleKeyInput(input)
-    if not Hub.CapturingToggleKey then return end
-    if input.UserInputType~=Enum.UserInputType.Keyboard then return end
-    Hub.IgnoreToggleInput=input
-    -- Roblox can reuse the same InputObject for later presses of this key.
-    task.defer(function()if Hub.IgnoreToggleInput==input then Hub.IgnoreToggleInput=nil end end)
-    local target=Hub.CapturingToggleKey;Hub.CapturingToggleKey=nil
-    if input.KeyCode~=Enum.KeyCode.Escape and input.KeyCode~=Enum.KeyCode.Unknown then Hub:SetToggleKey(input.KeyCode)end
-    if target.Parent then target.Text=CONFIG.ToggleKey.Name end
-    return true
-end
-connect(UIS.InputBegan,function(input)Hub:AcceptToggleKeyInput(input)end)
-connect(UIS.InputEnded,function(input)if Hub.IgnoreToggleInput==input then Hub.IgnoreToggleInput=nil end end)
-local function watchCharacter(character)
-    connect(character.DescendantAdded,function(node)
-        if preferences.HideUser then task.defer(function()if Hub.Alive and node.Parent then watchIdentity(node)end end)end
-    end)
-    if preferences.HideUser then for _,node in ipairs(character:QueryDescendants('TextLabel, TextButton, Humanoid'))do watchIdentity(node)end end
-end
-connect(player.CharacterAdded,watchCharacter)
-if player.Character then watchCharacter(player.Character)end
-connect(playerGui.DescendantAdded,function(node)
-    if preferences.HideUser then task.defer(function()if Hub.Alive and node.Parent then watchIdentity(node)end end)end
-end)
-connect(coreGui.DescendantAdded,function(node)
-    if not preferences.HideUser or not(node:IsA('TextLabel')or node:IsA('TextButton'))then return end
-    local playerList=coreGui:FindFirstChild('PlayerList')
-    if playerList and node:IsDescendantOf(playerList)then
-        task.defer(function()if Hub.Alive and node.Parent then watchIdentity(node)end end)
-    end
-end)
-local function applyRendering(value)
-    local ok,err=pcall(function()rendering:Set3dRenderingEnabled(not value)end)
-    if not ok then return false,tostring(err)end
-    preferences.Disable3D=value;blackScreen.Enabled=value
-    return true
-end
-local function applyFPS(value)
-    if type(setfpscap)~='function'then return false,'FPS limit is unavailable in this environment'end
-    local ok,err=pcall(setfpscap,value)
-    if ok then preferences.FPSLimit=value end
-    return ok,err
-end
-Hub:OnCleanup(function()
-    pcall(function()rendering:Set3dRenderingEnabled(true)end)
-    blackScreen:Destroy()
-    preferences.HideUser=false;applyPrivacy()
-end)
-task.defer(function()
-    if not Hub.Alive then return end
-    Hub:SetScale(preferences.Scale)
-    applyFPS(preferences.FPSLimit)
-    applyRendering(preferences.Disable3D)
-    applyPrivacy()
-    if Hub.SetIconVisible then Hub:SetIconVisible(preferences.ShowIcon)end
-end)
-local function drawSettings()
-    local panel=frameRow(486);panel.Name='SystemSettings'
-    local interface=frameRow(486);interface.Name='InterfaceSettings'
-    label(panel,'SYSTEM / PREFERENCES',14,UDim2.fromOffset(20,14),UDim2.new(1,-40,0,22),true)
-    label(panel,'Your setup',24,UDim2.fromOffset(20,40),UDim2.new(1,-40,0,34))
-    label(interface,'CONTROLS / PRIVACY',14,UDim2.fromOffset(20,14),UDim2.new(1,-40,0,22),true)
-    label(interface,'Interface & privacy',24,UDim2.fromOffset(20,40),UDim2.new(1,-40,0,34))
-    local function range(title,y,minimum,maximum,value,step,formatter,commit)
-        label(panel,title,17,UDim2.fromOffset(20,y),UDim2.new(1,-130,0,30))
-        local number=label(panel,formatter(value),16,UDim2.new(1,-112,0,y),UDim2.fromOffset(92,30))
-        number.TextXAlignment=Enum.TextXAlignment.Right
-        local pending=value
-        slider(panel,y+47,minimum,maximum,value,step,function(v)pending=v;number.Text=formatter(v)end,function()
-            local ok,err=commit(pending)
-            if ok==false then notify(tostring(err or 'Could not apply setting'))end
-        end)
-    end
-    range('UI Scale',94,.75,1.3,userScale,.05,function(v)return math.floor(v*100+.5)..'%'end,function(v)preferences.Scale=v;Hub:SetScale(v);return true end)
-    range('FPS Limit',178,10,240,preferences.FPSLimit,5,function(v)return tostring(math.floor(v))..' FPS'end,applyFPS)
-    local function toggle(title,description,y,key,apply,parent)
-        parent=parent or panel
-        local titleLabel=label(parent,title,17,UDim2.fromOffset(20,y),UDim2.new(1,-108,0,30))
-        local detail=label(parent,description,14,UDim2.fromOffset(20,y+31),UDim2.new(1,-110,0,43),true);detail.TextWrapped=true
-        local control=button(parent,'',UDim2.new(1,-74,0,y+15),UDim2.fromOffset(54,28));control.Name=key;round(control,20)
-        local paintSwitch=Hub:SkinToggle(control,preferences[key])
-        local function update()
-            titleLabel.Text=title..(preferences[key]and ' · ON'or ' · OFF')
-            paintSwitch(preferences[key])
-        end
-        update()
-        control.Activated:Connect(function()
-            local value=not preferences[key]
-            local ok,err=apply(value)
-            if ok~=false then preferences[key]=value else notify(tostring(err))end
-            update()
-        end)
-    end
-    toggle('Disable 3D','Black background; hub controls stay available.',265,'Disable3D',applyRendering)
-    toggle('Hide User','Mask your name in on-screen text.',246,'HideUser',function(value)preferences.HideUser=value;applyPrivacy();return true end,interface)
-    label(interface,'Hidden name',17,UDim2.fromOffset(20,340),UDim2.new(.45,-20,0,36))
-    local alias=box(interface,'Fyrelith',UDim2.new(.45,0,0,340),UDim2.new(.55,-20,0,36));alias.Name='PrivacyName';alias.Text=preferences.PrivacyName
-    alias.FocusLost:Connect(function()
-        local ok,result=pcall(Hub.SetPrivacyName,Hub,alias.Text)
-        alias.Text=preferences.PrivacyName
-        if not ok then notify(tostring(result))end
-    end)
-    label(interface,'Window hotkey',17,UDim2.fromOffset(20,94),UDim2.new(.5,-20,0,36))
-    local keyButton=pill(interface,CONFIG.ToggleKey.Name,UDim2.new(.55,0,0,94),UDim2.new(.45,-20,0,36));keyButton.Name='WindowHotkey'
-    keyButton.Activated:Connect(function()
-        if UIS.TouchEnabled and not UIS.KeyboardEnabled then notify('Connect a keyboard to change this hotkey. Use the icon or touch restore button to open the UI.');return end
-        if Hub.CapturingToggleKey==keyButton then Hub.CapturingToggleKey=nil;keyButton.Text=CONFIG.ToggleKey.Name;return end
-        Hub.CapturingToggleKey=keyButton;keyButton.Text='Press a key…'
-    end)
-    keyButton.Destroying:Once(function()if Hub.CapturingToggleKey==keyButton then Hub.CapturingToggleKey=nil end end)
-    toggle('Show UI icon','Use the hotkey to open the window when hidden.',150,'ShowIcon',function(value)preferences.ShowIcon=value;Hub:SetIconVisible(value);persistInterface();return true end,interface)
-    label(interface,'These controls save automatically.',14,UDim2.fromOffset(20,412),UDim2.new(1,-40,0,44),true)
-    local save=pill(panel,'Save Config',UDim2.fromOffset(20,383),UDim2.new(1,-40,0,42));save.Name='SaveInterfaceConfig'
-    save.Activated:Connect(function()
-        if type(writefile)~='function'or type(makefolder)~='function'then notify('Config saving is unavailable in this environment');return end
-        local ok,err=pcall(function()
-            if type(isfolder)~='function'or not isfolder('.FYRELITH-Default-20261104')then pcall(makefolder,'.FYRELITH-Default-20261104')end
-            writefile(preferencePath,HttpService:JSONEncode(preferences))
-            local runtime=getgenv and getgenv().FyrelithRuntime
-            if runtime and type(runtime.Save)=='function'then runtime.Save()end
-        end)
-        notify(ok and 'Config saved · loads on next script start'or 'Could not save config')
-    end)
-    label(panel,'Saved settings load when FYRELITH starts.',14,UDim2.fromOffset(20,438),UDim2.new(1,-40,0,30),true)
-end
-
-
-local filterButtons = {}
-for index, name in ipairs({ "All", "Utility", "Visual", "Movement" }) do
-    local b = button(filters, name, nil, UDim2.fromOffset(name == "Movement" and 100 or (name == "All" and 48 or 76), 32))
-    b.LayoutOrder = index
-    b.TextSize = 12
-    filterButtons[name] = b
-    themed(b, "BackgroundColor3", function() return category == name and softAccent() or colors.Panel end)
-    themed(b, "TextColor3", function() return category == name and accent or colors.Muted end)
-    b.Activated:Connect(function() if category ~= name then category = name; refresh(true) end end)
-end
-local pageTitles = { Overview = "Your Workspace", Scripts = "Script Library", Favorites = "Favorites", Settings = "Settings" }
-local pageSubtitles = { Overview = "Your tools, ready when you are.", Scripts = CONFIG.Subtitle, Favorites = "Keep your most useful tools close.", Settings = "Make this workspace yours." }
-local function renderContent()
-    clearContent()
-    if list then list:Destroy(); list = nil end
-    toolLayout = nil
-    if page == "Settings" then
-        list = make("UIListLayout", scroll, { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder })
-        drawSettings();Hub:SplitSettings(scroll);return
-    end
-    if category == "Main" and page == "Scripts" then list=Hub:RenderGameHome(scroll);return end
-    local matches = {}
-    for _, item in ipairs(Hub.Items) do
-        if (page ~= "Favorites" or favorites[item.Id]) and (category == "All" or item.Category == category)
-            and (not item.Available or item.Available()) then
-            table.insert(matches, item)
-        end
-    end
-    if #matches == 0 then
-        list = make("UIListLayout", scroll, { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder })
-        local empty = frameRow(110)
-        label(empty, page == "Favorites" and "No favorites yet" or "No tools found", 18, UDim2.fromOffset(18, 20), UDim2.new(1, -36, 0, 30))
-        label(empty, page == "Favorites" and "Use the star on a tool to save it here." or "No tools in this category yet.", 13, UDim2.fromOffset(18, 58), UDim2.new(1, -36, 0, 26), true)
-        return
-    end
-    if Hub.GroupGameControls then list=Hub:RenderGroupedTools(matches,scroll);return end
-    list = make("UIListLayout", scroll, { Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder })
-    local index = 1
-    while index <= #matches do
-        local item = matches[index]
-        if not compact and item.Kind == "Slider" and matches[index + 1] and matches[index + 1].Kind == "Slider" then
-            local pair = make("Frame", scroll, { Name = "SliderPair", LayoutOrder = index, Size = UDim2.new(1, -2, 0, 180), BackgroundTransparency = 1 })
-            make("UIListLayout", pair, { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 16), SortOrder = Enum.SortOrder.LayoutOrder })
-            drawItem(item, index, pair, false)
-            drawItem(matches[index + 1], index + 1, pair, false)
-            index = index + 2
-        else
-            drawItem(item, index, nil, not compact and item.Kind ~= "Slider")
-            index = index + 1
-        end
-    end
-end
-refresh = function(animated)
-    if not Hub.Alive then return end
-    pageToken = pageToken + 1
-    local token = pageToken
-    cancelSlider()
-    local categoryTitle = page == "Scripts" and (category == "All" and "All Tools" or category) or pageTitles[page]
-    brand.Text = CONFIG.Wordmark
-    local categoryChanged = sectionTitle.Text ~= categoryTitle
-    sectionTitle.Text = categoryTitle
-    tween(sectionChip, { Size = UDim2.fromOffset(math.clamp(TextService:GetTextSize(categoryTitle, 16, CONFIG.HeadingFont, Vector2.new(500, 40)).X + 34, 76, 168), 38) }, .28)
-    if categoryChanged then
-        sectionTitle.TextTransparency = reducedMotion and 0 or .65
-        sectionUnderline.Size = UDim2.fromOffset(reducedMotion and 26 or 10, 3)
-        tween(sectionTitle, { TextTransparency = 0 }, .3)
-        tween(sectionUnderline, { Size = UDim2.fromOffset(26, 3) }, .35)
-    end
-    filters.Visible = false
-    content.Position = UDim2.fromOffset(24, 20)
-    content.Size = UDim2.new(1, -48, 1, -32)
-    if updateDockSelection then updateDockSelection() end
-    for name, b in pairs(filterButtons) do
-        tween(b, { BackgroundColor3 = category == name and softAccent() or colors.Panel, TextColor3 = category == name and accent or colors.Muted }, 0.18)
-    end
-    renderNavigation()
-    local function commit()
-        if not Hub.Alive or token ~= pageToken then return end
-        renderContent()
-        content.GroupTransparency = animated and not reducedMotion and 0.65 or 0
-        local target = content.Position
-        if animated and not reducedMotion then content.Position = target + UDim2.fromOffset(4, 0) end
-        tween(content, { GroupTransparency = 0, Position = target }, 0.3)
-    end
-    if animated and not reducedMotion then
-        tween(content, { GroupTransparency = 1 }, 0.09)
-        task.delay(0.095, commit)
-    else
-        tween(content, { GroupTransparency = 0 }, 0)
-        commit()
-    end
-end
-function Hub:RefreshTools()
- if not self.Alive then return end
- if self.IsInlineOpen and self:IsInlineOpen()then self.PendingRefresh=true;return end
- self.PendingRefresh=false
- local position=scroll.CanvasPosition
- self.PreserveContentScroll=true
- refresh(false)
- self.PreserveContentScroll=false
- local token=pageToken
- scroll.CanvasPosition=position
- task.defer(function()
-  if self.Alive and token==pageToken and scroll.Parent then scroll.CanvasPosition=position end
- end)
-end
-local navigation = { { "Overview", "H" }, { "Scripts", "S" }, { "Favorites", "F" }, { "Settings", "+" } }
-for index, info in ipairs(navigation) do
-    local name, icon = info[1], info[2]
-    local b = button(sidebar, "", UDim2.fromOffset(12, 16 + (index - 1) * 52), UDim2.new(1, -24, 0, 44))
-    b.Name = name
-    local glyph = label(b, icon, 17, UDim2.fromOffset(0, 0), UDim2.fromOffset(44, 44))
-    glyph.TextXAlignment = Enum.TextXAlignment.Center
-    local text = label(b, name, 14, UDim2.fromOffset(45, 0), UDim2.new(1, -49, 1, 0))
-    navButtons[name] = { Button = b, Glyph = glyph, Label = text, Index = index }
-    b.Activated:Connect(function()
-        if page == name then return end
-        page, category = name, "All"
-        refresh(true)
-    end)
-end
-renderNavigation = function()
-    for name, entry in pairs(navButtons) do
-        local selected = page == name
-        tween(entry.Button, { BackgroundColor3 = selected and softAccent() or colors.Background }, 0.2)
-        tween(entry.Glyph, { TextColor3 = selected and accent or colors.Muted }, 0.2)
-        tween(entry.Label, { TextColor3 = selected and colors.Text or colors.Muted }, 0.2)
-        if selected then tween(navMarker, { Position = UDim2.fromOffset(10, 16 + (entry.Index - 1) * 52) }, 0.3) end
-    end
-end
-
-local function clampWindow()
-    if not Hub.Alive then return end
-    window.AnchorPoint = Vector2.new(0.5, 0.5)
-    window.Position = UDim2.new(0.5, 0, 0.5, windowTopInset/2+motionOffset.Value)
-    windowShadow.Position = window.Position
-end
-layoutWindow = function()
-    if not Hub.Alive then return end
-    local available = root.AbsoluteSize
-    if available.X < 1 or available.Y < 1 then return end
-    windowTopInset=available.Y<820 and 96 or 0
-    local availableHeight=math.max(100,available.Y-windowTopInset)
-    local wasCompact = compact
-    compact = available.X < 700 or UIS.TouchEnabled or Hub.TouchPreview==true
-    brand.TextSize = compact and 16 or 20
-    local brandWidth = brandWidths[brand.TextSize] or TextService:GetTextSize(CONFIG.Wordmark, brand.TextSize, CONFIG.HeadingFont, Vector2.new(500, 40)).X
-    local wordmarkWidth = compact and 120 or 138
-    headerWordmark.Size = UDim2.fromOffset(wordmarkWidth, wordmarkWidth / 3)
-    headerWordmark.Position = UDim2.fromOffset(24, (76 - wordmarkWidth / 3) / 2)
-    sectionChip.Position = UDim2.fromOffset(24 + wordmarkWidth + 12, 19)
-    if wasCompact ~= compact and refresh then
-        task.defer(function() if Hub.Alive then refresh(false) end end)
-    end
-    if toolLayout and toolLayout.Parent then
-        toolLayout.CellSize = compact and UDim2.new(1, -2, 0, 180) or UDim2.new(0.5, -9, 0, 180)
-    end
-    local width=(UIS.TouchEnabled or Hub.TouchPreview)and math.max(280,(available.X-24)/math.min(userScale,1))or(compact and math.min(420,math.max(280,available.X-16))or 900)
-    local baseHeight=(UIS.TouchEnabled or Hub.TouchPreview)and math.min(880,math.max(240,(availableHeight-16)/math.min(userScale,1)))or 660
-    local baselineFit = math.max(0.1, math.min(userScale, (available.X - 16) / width, (availableHeight - 16) / baseHeight))
-    local maxHeight = (availableHeight - 16) / baselineFit
-    local height = math.min(baseHeight + 220 * expansion.Value, maxHeight)
-    window.Size = UDim2.fromOffset(width, height)
-    windowShadow.Size = UDim2.fromOffset(width + 80, height + 80)
-    local fit = math.min((available.X - 16) / width, (availableHeight - 16) / height)
-    fittedWindowScale=math.max(0.1, math.min(userScale, fit))
-    windowScale.Scale = fittedWindowScale
-    shadowScale.Scale = windowScale.Scale
-    sidebar.Visible, divider.Visible = false, false
-    main.Position = UDim2.fromOffset(12, 76)
-    main.Size = UDim2.new(1, -24, 1, -128)
-    profile.Visible = false
-    for _, entry in pairs(navButtons) do entry.Label.Visible = not compact end
-    -- Compact tabs still fit at 440 logical pixels without clipping.
-    for name, b in pairs(filterButtons) do b.Size = UDim2.fromOffset(compact and ({ All = 40, Utility = 61, Visual = 57, Movement = 91 })[name] or (name == "Movement" and 100 or (name == "All" and 48 or 76)), 32) end
-    clampWindow()
-    if layoutDock then layoutDock() end
-end
-connect(root:GetPropertyChangedSignal("AbsoluteSize"), layoutWindow)
-connect(entrance.Changed,function()
-    if not Hub.Alive then return end
-    windowScale.Scale=fittedWindowScale
-    shadowScale.Scale=windowScale.Scale
-end)
-connect(expansion.Changed, layoutWindow)
-connect(motionOffset.Changed, function() if Hub.Alive then clampWindow() end end)
-
-local windowBlur = make("BlurEffect",game:GetService("Lighting"),{Name="FyrelithWindowBlur",Size=0})
-Hub:OnCleanup(function()windowBlur:Destroy()end)
--- Embedded user-selected MP3s: 70 open, 54 close, Happy Pop UI clicks.
-do
- local audio={Enabled=true,Volume=.4,ClickVolume=.4,Ready=false,Requests=0,ClickRequests=0,MenuRequests=0,SelectionRequests=0,LastSelectionTime=-math.huge,LastMenuTime=-math.huge,LastWindowTime=-math.huge,LastClickTime=-math.huge}
- Hub.WindowAudio=audio
- local function decode(value)
-  local alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-  local lookup={};for i=1,#alphabet do lookup[alphabet:byte(i)]=i-1 end
-  local output,acc,bits={},0,0
-  for i=1,#value do
-   local digit=lookup[value:byte(i)]
-   if digit then
-    acc=acc*64+digit;bits+=6
-    if bits>=8 then bits-=8;local byte=math.floor(acc/2^bits);output[#output+1]=string.char(byte);acc=acc%2^bits end
-   end
+  cleanup();state.Failed=not state.Cancelled;state.Status=state.Cancelled and 'Cancelled'or'Return failed'
+  env.FyrelithReturnLobbyInProgress=false
+  -- If an early redirect failed, restore the normal UI so the user can act.
+  if not state.Cancelled and not(env.FyrelithExecutionState and env.FyrelithExecutionState.Game==game)then
+   pcall(function()local source=readfile('.FyrelithDefaultCache/FyrelithRuntimePayload.luau');env.FyrelithScriptSource=source;assert(loadstring(source))()end)
   end
-  return table.concat(output)
- end
- local assets={Open='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wrFZyu1xYy/sVjzkuTDtms7TDlTKZImrVkimTBo1Fo8xJfSKTlJfLqa080Muy1qJs5ium4lxW4KDMNS9LKlkUFWIuTIYalsRay7st5q1jMv7LeCIGg4ROypUFawmkRFgaJFg7wVBUFYlqBng07/BWSpMQU1FMy4xMDCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',Close='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qLSocLDvTcKDJCIwRCUfKjghC0KTk8GKgdBGEswL8T0FjkxNlLSF52UpZjUMuUSx0scj9atLfMzvzd4wQo8WPCvuTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVIADta1r1oTkyMl31ZqcgiTo2TE9qyYmJk2YujiB1EcnggiLRcZGT1xxEoyXRnJJBEBrKbxciDEKfl9EJFxHpJ0dSujahb+mFDWXUGZijWYp9WgvZFchzLIcyHF+LkrozC3ltLiW0ekekTUhLphesKGqGZiMjI5iXR9ZK7YrABAePozkmnp//vUREMP9ZBbtamPZrCs6zagJezSAEACAAyAACAHAEABgAAEJEIRic+tlKYkkShKPlxkZGR9bVp71jo+hMXrLl1rWs1Wq12dr02e8FZYNeut9S8YERKhQs0REywWYaIgSJtpZFhEaIYLkoLAUIgNIxSk1cazVTKzUkR/HKW0QkfulKhp0p0lRLn8VEi2i4k5JyhzMnjmUS5LNjlsxMSa75ye5AZWHID0eeVRCBsCQEhGJz5JAFEaxWLTJJElwQiaYmLhKBsIxkBYCIimIkk12qYGyldCe4dCEDYGzrJyeu808lXfLJJEWJolGJJJri61rbOWtNVrp06VTIxLPG9OZUJMQU1FMy4xMDCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',Click='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SxxdA2w9CRFTqi7DbkRCWOLqTYeyRFTqi8G3NISxxcy0FokhJZh8WpIiKKPi4WiSNLMuLUkROKuLjUSRpcPF4kacU7PGzRr0w1QamkSiJ0w1QammVFXTSqStTKiv2nbv6gyxrF+d0/mzK5rCaZMRmRD54udJm6JlQZxAIRbZB5QZYzXnePaHQlA2BICQEgBgIgRAiBECIEQOg1BqJQlGR8uet8za1rWta1emZm1rVrWszM2qytWrTExMTElCUJQlCUJQlGRkcrXexpcuJQkg1BECIEQIgAgAgAgSAkBIDwNgbCUJRktdxpcdGRkSiSJIkiSDUGokiSIIlCUZGR8uXWtOWXLly4yMjkxMTFatWrVrVrW+ZmZmZrWrK1cuXGRkZGRkZLVq2vZZcdHJJEkGoNQIgRAiAKBICQlCUJRkZGRktd7LLjoyJRJEkGoNQagiBECIEQSBsDYGwlCUTjIyd5o6MhKBsBICQknvVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70GQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/70mQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9BkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+9JkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQ==',Menu='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qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpMQU1FMy4xMDCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',Selection='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qkmkupO0rSTSTUndRkZGAf////yyyyyWWWWSyypYCChgYIGEDkKqqqqaaabf9X//////1VVVV00001VVVV00003+qpVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//vSZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU='}
- local sounds={}
- Hub:OnCleanup(function()for _,sound in pairs(sounds)do sound:Destroy()end;table.clear(sounds);audio.Ready=false end)
- function Hub:PlayWindowSound(open)
-  if not self.Alive or not audio.Enabled then return end
-  local kind=open and 'Open'or'Close'
-  audio.Requests+=1;audio.LastRequested=kind;audio.LastWindowTime=os.clock()
-  for _,sound in pairs(sounds)do sound:Stop()end
-  local sound=sounds[kind]
-  if sound then sound.Volume=math.clamp(audio.Volume,0,1);sound.TimePosition=0;sound:Play()end
- end
- function Hub:PlayMenuSound()
-  if not self.Alive or not audio.Enabled then return end
-  local sound=sounds.Menu
-  if not sound then return end
-  audio.LastMenuTime=os.clock();audio.MenuRequests+=1
-  if sounds.Click then sounds.Click:Stop()end
-  sound:Stop();sound.Volume=math.clamp(audio.Volume,0,1);sound.TimePosition=0;sound:Play()
- end
- function Hub:PlayClickSound()
-  local now=os.clock()
-  if not self.Alive or not audio.Enabled or now-audio.LastWindowTime<.06 or now-audio.LastMenuTime<.06 or now-audio.LastSelectionTime<.06 or now-audio.LastClickTime<.045 then return end
-  local sound=sounds.Click
-  if not sound then return end
-  audio.LastClickTime=now;audio.ClickRequests+=1
-  sound:Stop();sound.Volume=math.clamp(audio.ClickVolume,0,1);sound.TimePosition=0;sound:Play()
- end
- function Hub:PlaySelectionSound()
-  local now=os.clock()
-  if not self.Alive or not audio.Enabled or now-audio.LastSelectionTime<.045 then return end
-  local sound=sounds.Selection
-  if not sound then return end
-  audio.LastSelectionTime=now;audio.SelectionRequests+=1
-  if sounds.Click then sounds.Click:Stop()end
-  if sounds.Menu then sounds.Menu:Stop()end
-  sound:Stop();sound.Volume=math.clamp(audio.Volume,0,1);sound.TimePosition=0;sound:Play()
- end
- local function hookButton(node)
-  if not node:IsA('GuiButton')or node:GetAttribute('FyrelithClickAudio')then return end
-  node:SetAttribute('FyrelithClickAudio',true)
-  node.Activated:Connect(function()
-   if node==hideButton or node==reopen or node.Name=='Launcher'then return end
-   -- Defer so a visibility action can take priority over the click sound.
-   task.defer(function()if Hub.Alive then Hub:PlayClickSound()end end)
-  end)
- end
- for _,node in ipairs(screen:QueryDescendants('TextButton, ImageButton'))do hookButton(node)end
- connect(screen.DescendantAdded,hookButton)
- task.spawn(function()
-  local ok,err=pcall(function()
-   local register=getcustomasset or getsynasset
-   assert(type(register)=='function'and type(writefile)=='function','Local audio files are not supported in this environment')
-   if type(makefolder)=='function'then pcall(makefolder,'.FYRELITH-Default-20261104')end
-   for kind,encoded in pairs(assets)do
-    local data=decode(encoded)
-    local path='.FYRELITH-Default-20261104/Window'..kind..'_'..#data..'.mp3'
-    if type(isfile)~='function'or not isfile(path)or type(readfile)~='function'or readfile(path)~=data then writefile(path,data)end
-    if not Hub.Alive then return end
-    local sound=Instance.new('Sound');sound.Name='Window'..kind..'Audio';sound.SoundId=register(path);sound.Volume=audio.Volume;sound.Looped=false;sound.Parent=screen;sounds[kind]=sound
-   end
-   assets=nil
-   audio.Sounds=sounds;audio.Ready=true
-   game:GetService('ContentProvider'):PreloadAsync({sounds.Open,sounds.Close,sounds.Click,sounds.Menu,sounds.Selection})
-  end)
-  if not ok then audio.Error=tostring(err);warn('[FYRELITH window audio] '..tostring(err))end
  end)
+ return true
 end
-
-
-function Hub:SetVisible(value)
-    if value == false and self.CloseGameChoices then self:CloseGameChoices()end
-    if not self.Alive then return end
-    if shown==(value==true)and window.Visible==(value==true)then return end
-    if not value and self.CapturingToggleKey then
-        local target=self.CapturingToggleKey;self.CapturingToggleKey=nil
-        if target.Parent then target.Text=CONFIG.ToggleKey.Name end
-    end
-    local visibilityChanged=shown~=(value==true)
-    shown = value == true
-    if visibilityChanged then self:PlayWindowSound(shown)end
-    tween(windowBlur,{Size=shown and 8 or 0},.32,Enum.EasingStyle.Sine)
-    visibilityToken = visibilityToken + 1
-    local token = visibilityToken
-    dragging = nil
-    cancelSlider()
-    if shown then
-        clampWindow()
-        window.Visible, reopen.Visible = true, false
-        windowShadow.Visible = true
-        tween(windowShadow, { GroupTransparency = 0 }, 0.3)
-        backdrop.Visible = true
-        tween(backdrop, { BackgroundTransparency = 1 - math.clamp(CONFIG.DimOpacity, 0, 1) }, 0.28)
-        tween(window,{GroupTransparency=1},0)
-        task.spawn(function()
-            game:GetService('RunService').RenderStepped:Wait()
-            game:GetService('RunService').RenderStepped:Wait()
-            if self.Alive and shown and visibilityToken==token then
-                tween(window,{GroupTransparency=0},.26)
-            end
-        end)
-    else
-        reopen.Visible = false
-        tween(backdrop, { BackgroundTransparency = 1 }, 0.2)
-        tween(window, { GroupTransparency = 1 }, 0.18)
-        tween(windowShadow, { GroupTransparency = 1 }, 0.2)
-        task.delay(0.21, function()
-            if self.Alive and visibilityToken == token and not shown then
-                window.Visible, backdrop.Visible, windowShadow.Visible = false, false, false
-            end
-        end)
-    end
+function router.Early()
+ local intent=router.Read()
+ local action=router.Decide(intent,game.GameId,game.PlaceId,game.JobId,DateTime.now().UnixTimestampMillis)
+ if action=='Lobby'or action=='Expired'then router.Clear();return false end
+ if action=='Redirect'then return router.Redirect(intent)end
+ return false
 end
-connect(hideButton.Activated, function() Hub:SetVisible(false) end)
-connect(reopen.Activated, function() Hub:SetVisible(true) end)
-connect(UIS.InputChanged, function(input)
-    if not shown then return end
-    if sliderDrag and (input == sliderDrag.Input or (sliderDrag.Input.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseMovement)) then
-        sliderDrag.Move(input.Position.X)
-    end
-end)
-connect(UIS.InputEnded, function(input)
-    if sliderDrag and input == sliderDrag.Input then cancelSlider() end
-    if dragging and input == dragging.Input then dragging = nil end
-end)
-connect(UIS.WindowFocusReleased, function() dragging = nil; cancelSlider() end)
-function Hub:HandleWindowHotkey(input,processed)
-    if input==Hub.IgnoreToggleInput or Hub.CapturingToggleKey then return end
-    if not processed and not UIS:GetFocusedTextBox() and input.KeyCode == CONFIG.ToggleKey then
-        if setDockOpen then setDockOpen(not shown)end
-    end
-end
-connect(UIS.InputBegan,function(input,processed)Hub:HandleWindowHotkey(input,processed)end)
-
-local closeOverlay
-connect(closeButton.Activated, function()
-    if closeOverlay then return end
-    cancelSlider()
-    closeOverlay = make("Frame", window, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = colors.Background, BackgroundTransparency = 0.12, ZIndex = 30, Active = true })
-    local modal = make("CanvasGroup", closeOverlay, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -54, 0, 194), BackgroundColor3 = colors.Panel, BorderSizePixel = 0, ZIndex = 31, GroupTransparency = 1 })
-    local modalScale = make("UIScale", modal, { Scale = 0.92 })
-    tween(modalScale, { Scale = 1 }, 0.32, Enum.EasingStyle.Back)
-    tween(modal, { GroupTransparency = 0 }, 0.2)
-    round(modal, 17); stroke(modal)
-    label(modal, "Close " .. CONFIG.Title .. "?", 22, UDim2.fromOffset(22, 20), UDim2.new(1, -44, 0, 34)).ZIndex = 32
-    label(modal, "This window and its active controls will close.", 13, UDim2.fromOffset(22, 63), UDim2.new(1, -44, 0, 28), true).ZIndex = 32
-    local cancel = button(modal, "Cancel", UDim2.new(0, 22, 1, -66), UDim2.new(0.5, -28, 0, 42)); cancel.ZIndex = 32
-    local confirm = pill(modal, "Close Hub", UDim2.new(0.5, 6, 1, -66), UDim2.new(0.5, -28, 0, 42)); confirm.ZIndex = 32
-    local dismissing = false
-    cancel.Activated:Connect(function()
-        if dismissing then return end
-        dismissing = true
-        tween(modalScale, { Scale = 0.96 }, 0.16)
-        tween(modal, { GroupTransparency = 1 }, 0.16)
-        local overlay = closeOverlay
-        task.delay(reducedMotion and 0 or 0.18, function()
-            if overlay then overlay:Destroy() end
-            if closeOverlay == overlay then closeOverlay = nil end
-        end)
-    end)
-    confirm.Activated:Connect(function() Hub:Destroy() end)
-end)
-
-local function cleanup()
-    if not Hub.Alive then return end
-    Hub.Alive = false
-    backdropScreen:Destroy()
-    pageToken, toastToken, visibilityToken = pageToken + 1, toastToken + 1, visibilityToken + 1
-    sliderDrag, dragging = nil, nil
-    for _, connection in ipairs(connections) do connection:Disconnect() end
-    table.clear(connections)
-    for _, properties in pairs(tweens) do for _, animation in pairs(properties) do animation:Cancel() end end
-    for index = #cleanupTasks, 1, -1 do
-        local ok, err = pcall(cleanupTasks[index])
-        if not ok then warn("[ScriptHub cleanup] " .. tostring(err)) end
-    end
-    table.clear(cleanupTasks)
-end
-function Hub:Destroy()
-    if not self.Alive then return end
-    cleanup()
-    screen:Destroy()
-end
-screen.Destroying:Connect(cleanup)
-
-function Hub:AddTool(options)
-    assert(type(options) == "table" and type(options.Name) == "string", "AddTool requires a Name")
-    local item = {
-        Id = options.Id or ("tool_" .. (#self.Items + 1)), Name = options.Name,
-        Description = options.Description or "", Category = options.Category or "Utility",
-        Kind = options.Kind or "Button", Callback = options.Callback, Symbol = options.Symbol,
-        Value = options.Value, Min = options.Min or 0, Max = options.Max or 100,
-        Step = options.Step or 1, Suffix = options.Suffix, Busy = false,
-        GetValue = options.GetValue, Options = options.Options, Available = options.Available, Group=options.Group, ControlOrder=options.ControlOrder, ActionLabel=options.ActionLabel, HasChoices=options.HasChoices, Secret=options.Secret,
-    }
-    assert(item.Kind == "Button" or item.Kind == "Toggle" or item.Kind == "Slider" or item.Kind == "Select" or item.Kind == "Input" or item.Kind == "Status" or item.Kind == "Gallery" or item.Kind == "Team" or item.Kind == "NameList", "Unknown tool Kind")
-    assert(item.Callback == nil or type(item.Callback) == "function", "Callback must be a function")
-    for _, existing in ipairs(self.Items) do assert(existing.Id ~= item.Id, "Duplicate tool Id: " .. item.Id) end
-    if item.Kind == "Toggle" then item.Value = item.Value == true end
-    if item.Kind == "Slider" then
-        assert(item.Max > item.Min and item.Step > 0, "Slider needs Max > Min and Step > 0")
-        item.Value = math.clamp(tonumber(item.Value) or item.Min, item.Min, item.Max)
-    end
-    table.insert(self.Items, item)
-    if refresh and not self.BatchRegister then refresh(false) end
-    return item
-end
-
--- Game tools are registered by the Fyrelith integration below.
-
--- ======================= ICON DOCK =======================
--- Main icon -> scrolling vertical category icons -> category function window.
--- All interaction is local; hover/selection shows the category's name.
-local dockOpen, dockToken = false, 0
-local selectedDock = "Auto Join"
-local function dockTopY()
-    if UIS.TouchEnabled or Hub.TouchPreview then return 4 end
-    local inset=game:GetService("GuiService"):GetGuiInset()
-    return 4-math.min(28,math.max(0,inset.Y))
-end
-local dock = make("Frame", root, { Name = "IconDock", AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, dockTopY()), Size = UDim2.fromOffset(64, 64), BackgroundTransparency = 1, ZIndex = 50 })
-dock.Visible=Hub.IconVisible~=false
-local dockScale = make("UIScale", dock, { Scale = 1 })
-local launcherShadow = make("Frame", dock, { Name = "LauncherShadow", Position = UDim2.fromOffset(-12, -8), Size = UDim2.fromOffset(88, 88), BackgroundTransparency = 1, ZIndex = 50 })
-local floatingLight = make("CanvasGroup", launcherShadow, {
-    Name = "FloatingLight", Position = UDim2.fromOffset(12, 60), Size = UDim2.fromOffset(64, 20),
-    BackgroundTransparency = 1, GroupTransparency = .3, ZIndex = 50,
-})
-for layer = 18, 1, -1 do
-    local t = layer / 18
-    local halo = make("Frame", floatingLight, {
-        Name = "SoftHalo", AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.fromOffset(14 + 34 * t, 1 + 10 * t),
-        BackgroundColor3 = Color3.fromRGB(153, 103, 240), BackgroundTransparency = .973 + .025 * t,
-        BorderSizePixel = 0, ZIndex = 50,
-    })
-    round(halo, 50)
-    make("UIGradient", halo, { Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.3,.2),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(.7,.2),NumberSequenceKeypoint.new(1,1)}) })
-end
-local launcher = button(dock, "", UDim2.fromOffset(32, 32), UDim2.fromOffset(64, 64), true)
-launcher.Name, launcher.ZIndex = "Launcher", 52
-launcher.AnchorPoint = Vector2.new(0.5, 0.5)
-launcher.BackgroundColor3 = Color3.fromRGB(27, 25, 32)
-launcher.BackgroundTransparency = 1
-launcher.ClipsDescendants = false
-launcher:SetAttribute("LauncherStyle", "FloatingF")
-launcher.ThemeGradient.Enabled = false
-round(launcher, 20)
-local launcherStatus = make("Frame", launcher, {
-    Name = "OpenIndicator", AnchorPoint = Vector2.new(0.5, 1),
-    Position = UDim2.new(0.5, 0, 1, -7), Size = UDim2.fromOffset(14, 2),
-    BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 54,
-})
-round(launcherStatus, 2)
-themed(launcherStatus, "BackgroundColor3", function() return accent end)
-themed(stroke(launcher), "Color", accentBorder)
-local launcherGlyph = label(launcher, "", 22)
-launcherGlyph.ZIndex = 53
-themed(launcherGlyph, "TextColor3", function() return accent end)
-
--- Real Lucide raster assets from latte-soft/lucide-roblox (256px sprite atlas).
--- Metadata source: https://github.com/latte-soft/lucide-roblox/blob/master/lib/Icons.luau
--- No remote Lua is downloaded or executed. Roblox loads images via ImageLabel.
---[[
-MIT License
-Copyright (c) 2023 Latte Softworks <https://latte.to>
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-ISC License (Lucide icon sources)
-Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part
-of Feather (MIT). All other copyright (c) for Lucide are held by Lucide
-Contributors 2022.
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-]]
-local iconAssets = {
-    command = { 16898619182, 514, 257 },
-    grid = { 16898674182, 514, 0 },
-    utility = { 16898735040, 0, 257 },
-    visual = { 16898669897, 0, 0 },
-    movement = { 16898619182, 257, 514 },
-    favorite = { 16898736776, 257, 0 },
-    settings = { 16898734421, 514, 0 },
-    activity = { 16898612629, 0, 514 },
-    clock = { 16898618763, 0, 0 },
-    sun = { 16898787671, 0, 0 },
-    terminal = { 16898788248, 514, 257 },
-    sparkles = { 16898735175, 514, 514 },
-    layers = { 16898674182, 257, 0 },
-    collapse = { 16898617411, 514, 257 },
-    close = { 16898791349, 257, 0 },
-}
-local iconImages = {}
-drawIcon = function(parent, kind, persistent, customHover)
-    local asset = iconAssets[kind] or iconAssets.settings
-    local image = make("ImageLabel", parent, {
-        Name = "LucideIcon", AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(24, 24),
-        BackgroundTransparency = 1, BorderSizePixel = 0,
-        Image = "rbxassetid://" .. asset[1],
-        ImageRectSize = Vector2.new(256, 256),
-        ImageRectOffset = Vector2.new(asset[2], asset[3]),
-        ScaleType = Enum.ScaleType.Fit, ResampleMode = Enum.ResamplerMode.Default,
-        ZIndex = parent.ZIndex + 1,
-    })
-    image:SetAttribute("IconKind", kind)
-    image:SetAttribute("IconSource", "Lucide / latte-soft")
-    gradient(image)
-    themed(image, "ImageColor3", function() return accent end)
-    if not customHover then
-        local idleSize, hovering
-        parent.MouseEnter:Connect(function()
-            if hovering then return end
-            hovering = true
-            idleSize = image.Size
-            if not reducedMotion then
-                tween(image, { Size = idleSize + UDim2.fromOffset(2, 2), Rotation = 5 }, 0.25, Enum.EasingStyle.Back)
-            end
-        end)
-        parent.MouseLeave:Connect(function()
-            hovering = false
-            if idleSize then tween(image, { Size = idleSize, Rotation = 0 }, 0.25) end
-        end)
-    end
-    if persistent ~= false then table.insert(iconImages, image) end
-    return image
-end
-
-local launchIcon = drawIcon(launcher, "sparkles", true, true)
-launchIcon.Size = UDim2.fromOffset(28, 28)
-logo.Visible = false
-local titleMark = make("Frame", titlebar, { Name = "BrandPlate", Position = UDim2.fromOffset(24, 21), Size = UDim2.fromOffset(32, 34), BackgroundTransparency = 1, BorderSizePixel = 0 })
-round(titleMark, 14)
-themed(titleMark, "BackgroundColor3", softAccent)
-local markBorder = stroke(titleMark); markBorder.Transparency = 0.35
-themed(markBorder, "Color", accentBorder)
-local titleIcon = drawIcon(titleMark, "sparkles")
-titleMark.Visible = false
-function Hub:SetBrandIcon(assetId)
-    local value = tostring(assetId)
-    local digits = value:match("^rbxassetid://(%d+)$") or value:match("^(%d+)$")
-    assert(digits and tonumber(digits) > 0, "SetBrandIcon needs a Roblox image asset ID")
-    for _, image in ipairs({ launchIcon, titleIcon }) do
-        image.ImageRectSize, image.ImageRectOffset = Vector2.zero, Vector2.zero
-        image.Image = "rbxassetid://" .. digits
-        image.ImageColor3 = Color3.new(1, 1, 1)
-        local paint = image:FindFirstChild("ThemeGradient")
-        if paint then paint.Enabled = false end
-        image:SetAttribute("IconSource", "Custom brand image")
-    end
-    launchIcon.Size, titleIcon.Size = UDim2.fromOffset(50, 50), UDim2.fromOffset(32, 32)
-    tween(launchIcon, { Rotation = 0 }, 0.2)
-end
-if CONFIG.BrandImage ~= "" then Hub:SetBrandIcon(CONFIG.BrandImage) end
-local floatingShadow = launchIcon:Clone()
-floatingShadow.Name = "FloatingLogoShadow"
-floatingShadow.ImageColor3 = Color3.new(0,0,0)
-floatingShadow.ImageTransparency = .68
-floatingShadow.Position = UDim2.new(.5, 1, .5, 3)
-floatingShadow.ZIndex = 52
-floatingShadow.Parent = launcher
-local launcherHovered, launcherPressed = false, false
-local launcherPressedInput
-local function animateLauncherDepth()
-    local scale = launcher:FindFirstChildOfClass("UIScale")
-    local targetScale = launcherPressed and 0.975 or (launcherHovered and 1.015 or 1)
-    tween(scale, { Scale = reducedMotion and 1 or targetScale }, 0.18)
-    launcher.BackgroundTransparency = 1
-    tween(floatingLight, { GroupTransparency = launcherPressed and .1 or (launcherHovered and .05 or .3) }, .22)
-    tween(floatingShadow, { ImageTransparency = launcherHovered and .78 or .68 }, .22)
-    launcherStatus.BackgroundTransparency = 1
-    launchIcon.Rotation = 0
-    launchIcon.Position = UDim2.fromScale(0.5, 0.5)
-end
-launcher.MouseEnter:Connect(function() launcherHovered = true; animateLauncherDepth() end)
-launcher.MouseLeave:Connect(function() launcherHovered = false; launcherPressed = false; launcherPressedInput = nil; animateLauncherDepth() end)
-launcher.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        launcherPressedInput = input
-        launcherPressed = true; animateLauncherDepth()
-    end
-end)
-launcher.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        launcherPressedInput = nil
-        launcherPressed = false; animateLauncherDepth()
-    end
-end)
-connect(UIS.WindowFocusReleased, function()
-    launcherHovered, launcherPressed, launcherPressedInput = false, false, nil; animateLauncherDepth()
-end)
-connect(UIS.InputEnded, function(input)
-    if input == launcherPressedInput then
-        launcherPressedInput, launcherPressed = nil, false
-        animateLauncherDepth()
-    end
-end)
-local menuReveal=make("Frame",dock,{Name="MenuReveal",Position=UDim2.fromOffset(76,0),Size=UDim2.fromOffset(0,64),BackgroundTransparency=1,ClipsDescendants=true,ZIndex=51})
-round(menuReveal,21)
-local menu = make("CanvasGroup", menuReveal, { Name = "Categories", Position = UDim2.fromOffset(0, 0), Size = UDim2.fromOffset(0, 64), BackgroundColor3 = colors.Dock, BorderSizePixel = 0, GroupTransparency = 1, Visible = false, ZIndex = 51 })
-round(menu, 21); local menuBorder = stroke(menu); menuBorder.Transparency = 0.15
-local menuScroll = make("ScrollingFrame", menu, { Name = "CategoryList", Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 1, -16), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0, ScrollBarImageTransparency = 1, ScrollBarImageColor3 = colors.Muted, AutomaticCanvasSize = Enum.AutomaticSize.X, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.X, ZIndex = 52 })
-make("UIListLayout", menuScroll, { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Left, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder })
-make("UIPadding", menuScroll, { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
-local tooltipShadow = make("CanvasGroup", root, { Name = "TooltipShadow", Size = UDim2.fromOffset(170, 80), BackgroundTransparency = 1, GroupTransparency = 1, Visible = false, ZIndex = 69 })
-for layer = 4, 1, -1 do
-    local shade = make("Frame", tooltipShadow, {
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 4),
-        Size = UDim2.new(1, -32 + layer * 6, 1, -32 + layer * 6),
-        BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.92, BorderSizePixel = 0, ZIndex = 69,
-    })
-    round(shade, 14 + layer * 2)
-end
-local tooltip = make("CanvasGroup", root, { Name = "CategoryTooltip", Size = UDim2.fromOffset(140, 40), BackgroundColor3 = colors.Panel, GroupTransparency = 1, Visible = false, BorderSizePixel = 0, ZIndex = 70 })
-round(tooltip, 14)
-local tipDot = make("Frame", tooltip, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 13, 0.5, 0), Size = UDim2.fromOffset(4, 4), BorderSizePixel = 0, ZIndex = 71 })
-round(tipDot, 4); themed(tipDot, "BackgroundColor3", function() return accent end)
-local tooltipText = label(tooltip, "", 15, UDim2.fromOffset(25, 0), UDim2.new(1, -40, 1, 0)); tooltipText.ZIndex = 71
-local tipLight = make("Frame", tooltip, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.92, BorderSizePixel = 0, ZIndex = 71 })
-make("UIGradient", tipLight, { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 1) }) })
-local tooltipOwner, tipToken = nil, 0
-local function hideTip()
-    if not tooltipOwner then return end
-    tooltipOwner = nil
-    tipToken = tipToken + 1
-    local token = tipToken
-    tween(tooltip, { GroupTransparency = 1, Position = tooltip.Position + UDim2.fromOffset(5, 0) }, 0.13)
-    tween(tooltipShadow, { GroupTransparency = 1, Position = tooltipShadow.Position + UDim2.fromOffset(5, 0) }, 0.13)
-    task.delay(reducedMotion and 0 or 0.15, function()
-        if Hub.Alive and token == tipToken and not tooltipOwner then
-            tooltip.Visible, tooltipShadow.Visible = false, false
-        end
-    end)
-end
-local function showTip(owner, text)
-    if not Hub.Alive or not owner.Visible then return end
-    if Hub.DockMoving or(owner ~= launcher and not dockOpen)then return end
-    tipToken = tipToken + 1
-    tooltipOwner = owner
-    tooltipText.Text = text
-    local available = root.AbsoluteSize
-    local measured = TextService:GetTextSize(text, 15, CONFIG.HeadingFont, Vector2.new(500, 40))
-    local width = math.clamp(measured.X + 42, 92, math.min(220, math.max(92, available.X - 16)))
-    tooltip.Size = UDim2.fromOffset(width, 40)
-    tooltipShadow.Size = UDim2.fromOffset(width + 32, 72)
-    local x = math.clamp(owner.AbsolutePosition.X - root.AbsolutePosition.X + (owner.AbsoluteSize.X - width) / 2, 8, math.max(8, available.X - width - 8))
-    local y = math.clamp(owner.AbsolutePosition.Y - root.AbsolutePosition.Y + owner.AbsoluteSize.Y + 12, 8, math.max(8, available.Y - 48))
-    tooltip.Position = UDim2.fromOffset(x - 7, y)
-    tooltipShadow.Position = UDim2.fromOffset(x - 23, y - 16)
-    tooltip.Visible, tooltipShadow.Visible = true, true
-    tooltip.GroupTransparency = 1
-    tooltipShadow.GroupTransparency = 1
-    tween(tooltip, { GroupTransparency = 0, Position = UDim2.fromOffset(x, y) }, 0.2)
-    tween(tooltipShadow, { GroupTransparency = 0, Position = UDim2.fromOffset(x - 16, y - 16) }, 0.2)
-end
-local function attachTip(owner, name)
-    owner.MouseEnter:Connect(function() showTip(owner, name) end)
-    owner.MouseLeave:Connect(function() if tooltipOwner == owner then hideTip() end end)
-    owner.SelectionGained:Connect(function() showTip(owner, name) end)
-    owner.SelectionLost:Connect(function() if tooltipOwner == owner then hideTip() end end)
-end
-attachTip(launcher, "Categories")
-attachTip(expandButton, "Expand / restore")
-local minimizeIcon = drawIcon(hideButton, "collapse", true, true)
-local closeIcon = drawIcon(closeButton, "close", true, true)
-minimizeIcon.Size, closeIcon.Size = UDim2.fromOffset(19, 19), UDim2.fromOffset(18, 18)
-attachTip(hideButton, "Minimize")
-attachTip(closeButton, "Close Hub")
-for _, control in ipairs({ { hideButton, minimizeIcon }, { closeButton, closeIcon } }) do
-    local b, image = control[1], control[2]
-    b.MouseEnter:Connect(function()
-        tween(b, { BackgroundColor3 = Color3.fromRGB(34, 34, 34), BackgroundTransparency = 0.1 }, 0.2)
-        tween(image, { Rotation = b == closeButton and 90 or 0, Position = UDim2.new(0.5, 0, 0.5, b == hideButton and 2 or 0) }, 0.25)
-    end)
-    b.MouseLeave:Connect(function()
-        tween(b, { BackgroundTransparency = 1 }, 0.25)
-        tween(image, { Rotation = 0, Position = UDim2.fromScale(0.5, 0.5) }, 0.25)
-    end)
-end
-local dockEntries = {}
-local categories = {
-    { Key = "Main", Name = "Main", Icon = "grid" },
-    { Key = "Auto Join", Name = "Auto Join", Icon = "movement" },
-    { Key = "Party", Name = "Party", Icon = "command" },
-    { Key = "Auto Play", Name = "Auto Play", Icon = "activity" },
-    { Key = "Summon", Name = "Summon", Icon = "sparkles" },
-    { Key = "Event", Name = "Event", Icon = "sun" },
-    { Key = "Macro", Name = "Macro", Icon = "terminal" },
-    { Key = "Dungeon", Name = "Dungeon", Icon = "layers" },
-    { Key = "Misc", Name = "Misc", Icon = "utility" },
-    { Key = "Webhook", Name = "Webhook", Icon = "command" },
-    { Key = "Settings", Name = "Settings", Icon = "settings" },
-}
-for index, info in ipairs(categories) do
-    local entry = button(menuScroll, "", nil, UDim2.fromOffset(48, 48), true)
-    -- Keep the dock's original hover motion independent of content buttons.
-    local dockButtonScale = entry:FindFirstChildOfClass("UIScale")
-    entry.MouseEnter:Connect(function()
-        tween(dockButtonScale, { Scale = reducedMotion and 1 or 1.012 }, .2, Enum.EasingStyle.Quint)
-    end)
-    entry.MouseLeave:Connect(function()
-        tween(dockButtonScale, { Scale = 1 }, .25)
-    end)
-    entry.Name, entry.ZIndex, entry.LayoutOrder = info.Key, 53, index
-    entry:SetAttribute("CategoryName", info.Name)
-    entry.BackgroundColor3 = colors.Background
-    local activeGlow = make("CanvasGroup", entry, {
-        Name = "ActiveDepth", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-        GroupTransparency = 1, ZIndex = 53,
-    })
-    local capLight = make("Frame", activeGlow, { Position = UDim2.fromOffset(9, 1), Size = UDim2.new(1, -18, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 53 })
-    make("UIGradient", capLight, { Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.3), NumberSequenceKeypoint.new(1, 1),
-    }) })
-    -- Gaussian falloff replaces the visible edges of nested capsule layers.
-    for glowLayer = 0, 23 do
-        local distance = 23 - glowLayer
-        local opacity = .24 * math.exp(-(distance * distance) / (2 * 8.5 * 8.5))
-        local halo = make("Frame", activeGlow, {
-            Name = "SoftLight", AnchorPoint = Vector2.new(.5, 0),
-            Position = UDim2.new(.5, 0, 0, 2 + distance),
-            Size = UDim2.fromOffset(44, 1), BackgroundTransparency = 1 - opacity,
-            BorderSizePixel = 0, ZIndex = 53,
-        })
-        themed(halo, "BackgroundColor3", function() return accent:Lerp(Color3.new(1, 1, 1), .1) end)
-        make("UIGradient", halo, { Rotation = 0, Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(.125, .94),
-            NumberSequenceKeypoint.new(.25, .64), NumberSequenceKeypoint.new(.375, .2),
-            NumberSequenceKeypoint.new(.5, 0), NumberSequenceKeypoint.new(.625, .2),
-            NumberSequenceKeypoint.new(.75, .64), NumberSequenceKeypoint.new(.875, .94),
-            NumberSequenceKeypoint.new(1, 1),
-        }) })
-    end
-    drawIcon(entry, info.Icon, true, true)
-    local selectedLine = make("Frame", entry, { Name = "SelectionLight", AnchorPoint = Vector2.new(.5,0), Position = UDim2.new(.5,0,0,2), Size = UDim2.fromOffset(24, 3), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, ZIndex = 55 })
-    round(selectedLine, 3)
-    local markerPaint = gradient(selectedLine)
-    markerPaint.Rotation = 0
-    markerPaint.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),
-        NumberSequenceKeypoint.new(0.2, 0.12),
-        NumberSequenceKeypoint.new(0.5, 0),
-        NumberSequenceKeypoint.new(0.8, 0.12),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    dockEntries[info.Key] = { Button = entry, Indicator = selectedLine, Glow = activeGlow, Index = index }
-    attachTip(entry, info.Name)
-    entry.Activated:Connect(function()
-        if Hub.CloseGameChoices then Hub:CloseGameChoices()end
-        selectedDock = info.Key
-        page = (info.Key == "Settings" or info.Key == "Favorites") and info.Key or "Scripts"
-        category = page == "Scripts" and info.Key or "All"
-        refresh(true)
-        Hub:SetVisible(true)
-        hideTip()
-    end)
-end
--- One shared selection surface travels continuously between category buttons.
-local selectionClip = make("Frame", menu, { Name = "SelectionClip", Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 1, -16), BackgroundTransparency = 1, ClipsDescendants = true, ZIndex = 51 })
-local firstDockEntry = dockEntries[categories[1].Key]
-local slidingSelection = firstDockEntry.Glow
-slidingSelection.Name = "SlidingSelection"
-slidingSelection.Parent = selectionClip
-slidingSelection.Size = UDim2.fromOffset(48, 48)
-slidingSelection.BackgroundTransparency = 0
-round(slidingSelection, 12)
-themed(slidingSelection, "BackgroundColor3", softAccent)
-gradient(slidingSelection)
-local slidingLine = firstDockEntry.Indicator
-slidingLine.Parent = slidingSelection
-slidingLine.Visible = true
-slidingLine.BackgroundTransparency = 0
-local selectionPlaced = false
-for _, entry in pairs(dockEntries) do
-    entry.Button.BackgroundTransparency = 1
-    if entry.Glow ~= slidingSelection then entry.Glow.Visible = false end
-    if entry.Indicator ~= slidingLine then entry.Indicator.Visible = false end
-end
-function Hub:OpenCategory(key)
- if not dockEntries[key]then return false end
- self:CloseGameChoices();selectedDock=key
- page=(key=="Settings"or key=="Favorites")and key or"Scripts"
- category=page=="Scripts"and key or"All"
- refresh(true);self:SetVisible(true);hideTip();return true
-end
-updateDockSelection = function(immediate)
-    local selected = dockEntries[selectedDock]
-    if not selected then return end
-    local target = UDim2.fromOffset(8 + (selected.Index - 1) * 57 - menuScroll.CanvasPosition.X, 0)
-    local duration = (immediate == true or not selectionPlaced) and 0 or .3
-    tween(slidingSelection, { Position = target, GroupTransparency = 0 }, duration, Enum.EasingStyle.Quint)
-    selectionPlaced = true
-end
-local function menuWidth()
-    return math.max(64,math.min(#categories*57+7,(root.AbsoluteSize.X-24)/dockScale.Scale-76))
-end
--- One critically damped motion value drives the launcher and reveal together.
-local dockMotion={Value=0,Velocity=0,Width=0}
-local function applyDockMotion()
-    dock.Size=UDim2.fromOffset(64+dockMotion.Value*(12+dockMotion.Width),64)
-    menuReveal.Size=UDim2.fromOffset(dockMotion.Value*dockMotion.Width,64)
-end
-layoutDock = function()
-    local available=root.AbsoluteSize
-    dockScale.Scale=math.max(.65,math.min(userScale,(available.X-24)/160,(available.Y-24)/100))
-    dock.Position=UDim2.new(.5,0,0,dockTopY())
-    dockMotion.Width=menuWidth()
-    menu.Size=UDim2.fromOffset(dockMotion.Width,64)
-    menu.Position=UDim2.fromOffset(0,0)
-    applyDockMotion()
-    updateDockSelection(true)
-    hideTip()
-end
-connect(game:GetService('RunService').RenderStepped,function(dt)
-    if not Hub.Alive or not Hub.DockMoving then return end
-    local target=dockOpen and 1 or 0
-    if reducedMotion then dockMotion.Value=target;dockMotion.Velocity=0 else
-        local omega=22
-        local offset=dockMotion.Value-target
-        local c=dockMotion.Velocity+omega*offset
-        local decay=math.exp(-omega*dt)
-        dockMotion.Value=math.clamp(target+(offset+c*dt)*decay,0,1)
-        dockMotion.Velocity=(dockMotion.Velocity-omega*c*dt)*decay
-    end
-    if math.abs(dockMotion.Value-target)<.001 and math.abs(dockMotion.Velocity)<.015 then
-        dockMotion.Value=target;dockMotion.Velocity=0;Hub.DockMoving=false
-        if not dockOpen then menu.Visible=false end
-    end
-    applyDockMotion()
-end)
-setDockOpen = function(value)
-    if not Hub.Alive then return end
-    if value==nil then value=not dockOpen end
-    value=value==true
-    if dockOpen==value then
-        if shown~=value then Hub:SetVisible(value)end
-        return
-    end
-    dockOpen=value;dockToken+=1
-    dock:SetAttribute('DockOpen',dockOpen)
-    dockMotion.Width=menuWidth()
-    animateLauncherDepth();hideTip()
-    menu.Size=UDim2.fromOffset(dockMotion.Width,64)
-    menu.Position=UDim2.fromOffset(0,0)
-    menu.GroupTransparency=0
-    if dockOpen then menu.Visible=true end
-    Hub.DockMoving=true
-    if reducedMotion then
-        dockMotion.Value=dockOpen and 1 or 0;dockMotion.Velocity=0
-        Hub.DockMoving=false;menu.Visible=dockOpen;applyDockMotion()
-    end
-    local windowAlreadyInState=shown==dockOpen
-    Hub:SetVisible(dockOpen)
-    if windowAlreadyInState and Hub.PlayWindowSound then Hub:PlayWindowSound(dockOpen)end
-    updateDockSelection(true)
-end
-function Hub:SetIconVisible(value)
-    self.IconVisible=value==true
-    dock.Visible=self.IconVisible
-    if not self.IconVisible then hideTip()end
-end
-launcher.Activated:Connect(function() setDockOpen() end)
-connect(menuScroll:GetPropertyChangedSignal("CanvasPosition"), function()
-    hideTip(); updateDockSelection(true)
-end)
--- Keep selected surfaces in sync with later theme changes.
-for key, entry in pairs(dockEntries) do
-    themed(entry.Button, "BackgroundColor3", function() return colors.Dock end)
-end
-Hub:OnCleanup(hideTip)
-task.spawn(function()
-    local ok, err = pcall(function()
-        game:GetService("ContentProvider"):PreloadAsync(iconImages)
-    end)
-    if not Hub.Alive then return end
-    if not ok then warn("[ScriptHub] Icon image preload: " .. tostring(err)) end
-end)
-layoutWindow()
-refresh(false)
-shown = false
-window.Visible, reopen.Visible = false, false
-window.GroupTransparency = 1
--- Touch recovery remains reachable even when the icon dock is hidden.
-local touchRestore=pill(root,'FYRELITH',UDim2.new(1,-142,1,-66),UDim2.fromOffset(126,48))
-touchRestore.Name='TouchRestore';touchRestore.ZIndex=100;touchRestore.Visible=false
-local function touchMode()return UIS.TouchEnabled or Hub.TouchPreview==true end
-local function updateTouchRestore()touchRestore.Visible=touchMode()and not shown and Hub.IconVisible==false end
-touchRestore.Activated:Connect(function()Hub:SetVisible(true);updateTouchRestore()end)
-local originalVisible,originalIcon=Hub.SetVisible,Hub.SetIconVisible
-function Hub:SetVisible(value)
- if not value and root:FindFirstChild('SetupGuide')and self.CloseSetupGuide then self:CloseSetupGuide()end
- local result=originalVisible(self,value);updateTouchRestore();return result
-end
-function Hub:SetIconVisible(value)local result=originalIcon(self,value);updateTouchRestore();return result end
-local function keepInputVisible()
- if not touchMode()then return end
- local focused=UIS:GetFocusedTextBox();if not focused or not focused:IsDescendantOf(screen)then return end
- local ok,visible,position=pcall(function()return UIS.OnScreenKeyboardVisible,UIS.OnScreenKeyboardPosition end)
- if not ok or not visible or position.Y<=0 then return end
- local scroller=focused:FindFirstAncestorWhichIsA('ScrollingFrame');if not scroller then return end
- local bottom=math.min(position.Y-14,scroller.AbsolutePosition.Y+scroller.AbsoluteSize.Y-14)
- local delta=focused.AbsolutePosition.Y+focused.AbsoluteSize.Y-bottom
- if delta>0 then scroller.CanvasPosition+=Vector2.new(0,delta/math.max(.1,windowScale.Scale))end
-end
-connect(UIS.TextBoxFocused,function()task.defer(keepInputVisible)end)
-pcall(function()connect(UIS:GetPropertyChangedSignal('OnScreenKeyboardVisible'),function()task.defer(keepInputVisible)end)end)
-pcall(function()connect(UIS:GetPropertyChangedSignal('OnScreenKeyboardPosition'),function()task.defer(keepInputVisible)end)end)
-function Hub:RefreshTouchLayout()layoutWindow();updateTouchRestore()end
-updateTouchRestore()
-
-return Hub
+return router
 
 end)()
-local Bridge=(function(Hub)
--- Callback adapter. This layer renders no legacy window.
-local Bridge = { Alive = true, Ready = false, Records = {}, ByNode = setmetatable({}, {__mode='k'}), Connections = {}, Revision = 0, Serial = 0, Errors = {} }
-local Players = game:GetService('Players')
-local player = Players.LocalPlayer
-function Bridge:Notify(message)Hub:Notify(message)end
-local categories = {Overview='Main',Main='Auto Join',Party='Party', ['Auto Play']='Auto Play', Macro='Macro', Dungeon='Dungeon', Summon='Summon', Event='Event', Misc='Misc', Utilities='Misc', Webhook='Webhook'}
-local ignore = {Outside=true,Search=true,SearchBox=true,Close=true,Chevron=true,Track=true,Knob=true,AutoPathTrack=true,AutoPathPercent=true,TeamAdvanced=true,BackToTeam=true,PathPercentValue=true,MasterPlace=true,MasterUpgrade=true,MasterAbilities=true,MasterSmart=true}
--- The guide owns plan creation; omit the old per-step editing controls.
-for _,name in ipairs({'AutoPlanStepUp','AutoPlanStepDown','AutoPlanStepRemove','PlanWaveInput','PlanUpgradeInput'})do ignore[name]=true end
-local function clean(value)
-    return tostring(value or ''):gsub('<[^>]->',''):gsub('[\r\n]+',' '):gsub('^%s+',''):gsub('%s+$','')
-end
-local function human(value)
-    return clean(value):gsub('(%l)(%u)','%1 %2'):gsub('[_%-]+',' ')
-end
-local function callbacks(node, event)
-    local out={}
-    if not node or not node.Parent then return out end
-    local signal=node[event]
-    if typeof(signal)~='RBXScriptSignal' or type(getconnections)~='function' then return out end
-    for _, connection in ipairs(getconnections(signal)) do
-        if connection.Function and connection.Enabled~=false then out[#out+1]=connection.Function end
-    end
-    return out
-end
-function Bridge:Invoke(node,event,...)
-    assert(self.Alive and node and node.Parent,'Control is no longer available')
-    local handlers=callbacks(node,event)
-    assert(#handlers>0,'This control has no active handler')
-    for _,fn in ipairs(handlers)do fn(...) end
-end
-function Bridge:Category(node)
-    local current=node
-    while current and current~=self.Body and current~=self.Host do
-        if current.Name=='ClaimPopupLayer'then return 'Misc'end
-        current=current.Parent
-    end
-    local at=node.Parent
-    while at and at~=self.Host do
-        if at.Parent==self.Body and categories[at.Name] then return categories[at.Name] end
-        if at.Parent==self.Body and at.Name=='Settings' then return nil end
-        at=at.Parent
-    end
-end
-function Bridge:Group(node)
-    local featureGroup=node:GetAttribute('FeatureGroup')
-    if featureGroup then return featureGroup end
-    local category=self:Category(node)
-    local name=node.Name
-    if category=='Party'then return node:GetAttribute('PartyGroup')or'Party automation'end
-    if category=='Summon'and name=='LatestMythicIcon'then return 'Summon results'end
-    if category=='Auto Play'then
-        if name=='PlayPicker_Selected Step'or name=='AutoPlanPreview'then return 'Plan review'end
-        if name=='TeamControl'or node:FindFirstAncestor('TeamControl')then return 'Team'end
-        if name:find('Smart')or name:find('Circle')or name=='PathPlacementMode'then return 'Circles'end
-    end
-    if category=='Auto Join'then
-        if name=='AutoChallenge'or name=='AutoDailyChallenge'or name=='Select_Challenge Entry'or name=='AutoChallengeStatus'then return 'Auto Challenge'end
-        if name:find('Team')or name:find('Rule')then return 'Team rules'end
-        if name:match('^Auto')and name~='AutoJoinSwitch'then return 'Match flow'end
-        return 'Auto Join'
-    elseif category=='Macro'then
-        if name:find('Wave')then return 'Wave action'end
-        if name:find('Load')or name:find('Delete')or name:find('Refresh')or name:find('Saved')then return 'Macro library'end
-        return 'Macro recorder'
-    elseif category=='Webhook'then
-        if name=='WebhookURL'or name=='WebhookEnabled'or name=='WebhookTest'then return 'Webhook connection'end
-        return 'Match notifications'
-    end
-    local at=node.Parent
-    while at and at~=self.Host and at~=self.Body do
-        local title=at:FindFirstChild('Title')or at:FindFirstChild('Heading')
-        if title and title:IsA('TextLabel')and clean(title.Text)~=''then return clean(title.Text)end
-        if at.Name:match('Card$')or at.Name:match('^Summer')then
-            return human(at.Name:gsub('Card$',''):gsub('^Summer',''))
-        end
-        at=at.Parent
-    end
-    if category=='Auto Play'then
-        if name:find('Team')then return 'Team'end
-        if name:find('Plan')or name:find('Capture')then return 'Play plan'end
-        if name:find('Area')or name:find('Smart')then return 'Smart placement'end
-        return 'Automation'
-    elseif category=='Dungeon'then
-        if name:find('Item')or name:find('Shop')or name:find('Curse')or name:find('AutoBuy')then return 'Shop and priorities'end
-        return 'Dungeon automation'
-    elseif category=='Misc'then return 'Rewards and utilities'end
-    return category or 'Tools'
-end
-function Bridge:IsAvailable(node)
-    if not self.Alive or not node or not node.Parent then return false end
-    local at=node
-    while at and at~=self.Host do
-        if at==self.Window then break end
-        if at:IsA('GuiObject') and not at.Visible then return false end
-        at=at.Parent
-    end
-    return self:Category(node)~=nil
-end
-function Bridge:Caption(node)
-    local titles={ChooseBanner='Banner preview',ChooseRerollItems='Reroll items',ChooseTraits='Target traits',ChooseClaimTypes='Reward types',SelectTraitUnit='Reroll unit',ChooseCardPriorities='Card priorities',PlanWaveInput='Step wave',PlanUpgradeInput='Upgrade target',MacroTargetWave='Action wave',MacroName='Macro name',AutoPlanName='Plan name'}
-    if titles[node.Name]then return titles[node.Name]end
-    if node.Name=='Toggle' and node.Parent and node.Parent.Name=='DungeonLifeGuard'then return 'Leave at one heart'end
-    if node:IsA('TextButton') and clean(node.Text)~='' then return clean(node.Text) end
-    local owner=node.Parent
-    local caption=owner and owner:FindFirstChild(node.Name..'Label')
-    if caption and caption:IsA('TextLabel') and clean(caption.Text)~=''then return clean(caption.Text)end
-    for _,name in ipairs({'Title','Caption','Label','Name','UnitName','ItemName','TraitName','Value'})do
-        local label=node:FindFirstChild(name)
-        if label and label:IsA('TextLabel') and clean(label.Text)~='' then return clean(label.Text) end
-    end
-    local parent=node.Parent
-    if parent then
-        local label=parent:FindFirstChild('Caption') or parent:FindFirstChild(node.Name..'Label')
-        if label and label:IsA('TextLabel') then return clean(label.Text) end
-    end
-    return human(node.Name)
-end
-function Bridge:Register(node, descriptor)
-    local record=self.ByNode[node]
-    if not record then
-        self.Serial=self.Serial+1
-        record={Id='fy_'..self.Serial,Node=node,Order=self.Serial}
-        self.ByNode[node]=record
-        self.Records[#self.Records+1]=record
-    end
-    for key,value in pairs(descriptor)do record[key]=value end
-    self.Revision=self.Revision+1
-    node:SetAttribute('AuroraMapped',true)
-    return record
-end
-function Bridge:RegisterToggle(node,title,description,get,set)
-    return self:Register(node,{Name=title,Description=description or '',Kind='Toggle',Get=get,Set=set})
-end
-function Bridge:RegisterPicker(node,title,get,options,set)
-    if node.Name=='Select_Challenge Entry'then title='Join method'end
-    return self:Register(node,{Name=title,Kind='Select',Get=get,Options=options,Set=set})
-end
-function Bridge:RegisterSlider(node,title,get,set,lo,hi,step)
-    return self:Register(node,{Name=title,Kind='Slider',Get=get,Set=set,Min=lo,Max=hi,Step=step or 1})
-end
-function Bridge:Visual(node)
-    if not node then return end
-    for _,visual in ipairs(node:QueryDescendants('ViewportFrame'))do
-        if visual.CurrentCamera then return visual end
-    end
-    for _,visual in ipairs(node:QueryDescendants('ImageLabel'))do
-        if visual.Image~='' and (visual.Name=='Visual' or visual.Name=='icon' or visual.Name=='Icon' or visual.Name=='ItemIcon' or visual.Name=='Portrait' or node.Name:match('^Target_'))then return visual end
-    end
-    local unitId=node.Name:match('^Unit_(.+)')
-    local id=node:GetAttribute('AuroraItemId') or node.Name:match('^MerchantItem_(.+)') or node.Name:match('^DungeonItem_(.+)') or node.Name:match('^TraitItem_(.+)')
-    if (not id and not unitId) or (tonumber(node:GetAttribute('AuroraVisualRetryAt'))or 0)>os.clock()then return end
-    node:SetAttribute('AuroraVisualRetryAt',os.clock()+5)
-    local ready=getgenv().FyrelithGameReady
-    local gui=ready and ready.Services.GUIService
-    if unitId and gui and type(gui.make_unit_gui_model)=='function'then
-        local ok,model=pcall(gui.make_unit_gui_model,unitId,nil)
-        if ok and typeof(model)=='Instance' and model:IsA('Model')then
-            local visual=Instance.new('ViewportFrame');visual.Name='Portrait';visual.BackgroundTransparency=1
-            visual.Ambient=Color3.fromRGB(210,210,210);visual.LightColor=Color3.new(1,1,1)
-            model.Parent=visual
-            local head=model:FindFirstChild('Head',true);local cf,size=model:GetBoundingBox()
-            local target=head and head.Position or cf.Position
-            local direction=head and head.CFrame.LookVector or Vector3.new(0,0,-1)
-            local camera=Instance.new('Camera');camera.FieldOfView=35
-            camera.CFrame=CFrame.lookAt(target+direction*(head and 3.5 or math.max(size.X,size.Y,size.Z)*1.4)+Vector3.new(0,.15,0),target)
-            camera.Parent=visual;visual.CurrentCamera=camera;visual.Parent=node
-            return visual
-        end
-        return
-    end
-    if gui and type(gui.make_item_frame)=='function'then
-        local ok,frame=pcall(gui.make_item_frame,id)
-        if ok and typeof(frame)=='Instance'then
-            local visual=frame:FindFirstChild('View',true) or frame:FindFirstChild('icon',true)
-            if visual and (visual:IsA('ViewportFrame') or visual:IsA('ImageLabel'))then
-                if visual:IsA('ViewportFrame') and not visual.CurrentCamera and type(gui.make_item_model)=='function'then
-                    local made,model=pcall(gui.make_item_model,id)
-                    if made and typeof(model)=='Instance' and(model:IsA('Model')or model:IsA('BasePart'))then
-                        model.Parent=visual
-                        local cf,size
-                        if model:IsA('Model')then cf,size=model:GetBoundingBox()else cf,size=model.CFrame,model.Size end
-                        local camera=Instance.new('Camera');camera.FieldOfView=35
-                        camera.CFrame=CFrame.lookAt(cf.Position+Vector3.new(0,.1,math.max(size.X,size.Y,size.Z)*1.9),cf.Position)
-                        camera.Parent=visual;visual.CurrentCamera=camera
-                    end
-                end
-                if visual:IsA('ViewportFrame') and not visual.CurrentCamera then frame:Destroy();return end
-                if visual:IsA('ViewportFrame') and visual.CurrentCamera then
-                    local camera=visual.CurrentCamera:Clone();camera.Parent=visual;visual.CurrentCamera=camera
-                end
-                visual.Parent=node;visual.Name='Visual';visual.Visible=true
-                frame:Destroy();return visual
-            end
-            frame:Destroy()
-        end
-    end
-end
-function Bridge:GalleryEntries(node)
-    local entries={}
-    for _,tile in ipairs(node:GetChildren())do
-        if tile:IsA('Frame') and tile.Name:match('^Unit_')then
-            entries[#entries+1]={name=self:Caption(tile),visual=self:Visual(tile),order=tile.Position.Y.Offset*1000+tile.Position.X.Offset}
-        end
-    end
-    table.sort(entries,function(a,b)return a.order<b.order end)
-    return entries
-end
-function Bridge:ItemDetail(node)
-    local parts={}
-    for _,name in ipairs({'Price','Stock','Detail','Description'})do
-        local text=node:FindFirstChild(name)
-        if text and text:IsA('TextLabel') and clean(text.Text)~=''then parts[#parts+1]=clean(text.Text)end
-    end
-    return table.concat(parts,' · ')
-end
-function Bridge:DungeonItemInfo(row)
-    local id=row.Name:match('^DungeonItem_(.+)')
-    if not id then return{}end
-    if not self.DungeonDefinitions then self.DungeonDefinitions=getgenv().FyrelithGameReady.Loader.load_core_service(script,'DungeonServiceCore').ITEMS end
-    local definition=self.DungeonDefinitions[id]or{}
-    local price=row:FindFirstChild('Price');local description=row:FindFirstChild('Description')
-    return{tier=definition.tier,price=price and clean(price.Text)or'',description=description and clean(description.Text)or clean(definition.description)}
-end
-function Bridge:IsPopup(node)
-    if node:GetAttribute('ViewportPopup')then return true end
-    local at=node.Parent
-    while at and at~=self.Host do
-        local name=at.Name:lower()
-        if at:GetAttribute('ViewportPopup') or name:find('overlay',1,true) or name:find('picker',1,true)
-            or name:find('compactmenu',1,true) or name:find('uniteditor',1,true) or name:find('selectionmenu',1,true)
-            or name:find('choose',1,true) or name:find('dropdown',1,true) or name:match('menu$') or name=='banneroptions' or name=='summerentryoptions' then return true end
-        at=at.Parent
-    end
-    return false
-end
-local popupRoots={ChooseRerollItems='TraitItemDropdown',ChooseTraits='TraitDropdown',ChooseBanner='BannerOptions',SummerEntryMode='SummerEntryOptions',ChooseClaimTypes='ClaimTypesMenu',SelectItems='GoldShopItemPicker',Mode='TeamModeMenu'}
-function Bridge:PopupChoices(opener)
-    local out={}
-    local root=self.Host
-    if opener then
-        local name=popupRoots[opener.Name] or (opener.Name:match('^Slot%d$') and 'TeamUnitEditor')
-        if name then root=self.Host:FindFirstChild(name,true);if not root then return out end end
-    end
-    for _,node in ipairs(root:QueryDescendants('TextButton, ImageButton, TextBox'))do
-        if self:IsAvailable(node) and self:IsPopup(node) and not ignore[node.Name] and not node.Name:lower():find('dismiss',1,true) then
-            if node:IsA('TextBox') and node.TextEditable~=false then
-                local lo=node.Parent:GetAttribute('Minimum');local hi=node.Parent:GetAttribute('Maximum')
-                out[#out+1]={id=node,name=self:Caption(node),kind=lo and hi and'Slider'or'Input',min=lo,max=hi,value=node.Text,apply=function(value)
-                    node.Text=tostring(value);if #callbacks(node,'FocusLost')>0 then self:Invoke(node,'FocusLost',true,nil)end
-                end}
-            elseif node:IsA('GuiButton') and not node.Name:match('Slider$') and #callbacks(node,'Activated')>0 then
-                local enabled=node:GetAttribute('Enabled')
-                local selected=node:GetAttribute('Selected')
-                local marker=node:FindFirstChild('Selected')
-                if marker and marker:IsA('TextLabel')then selected=clean(marker.Text)~=''end
-                out[#out+1]={id=node,name=self:Caption(node),kind=enabled~=nil and'Toggle'or nil,value=enabled,visual=self:Visual(node),detail=self:ItemDetail(node),selected=selected==true or enabled==true,apply=function(value)
-                    if enabled==nil or value==nil or node:GetAttribute('Enabled')~=value then self:Invoke(node,'Activated')end
-                end}
-            end
-        end
-    end
-    table.sort(out,function(a,b)
-        local ap,bp=a.id.AbsolutePosition,b.id.AbsolutePosition
-        if math.abs(ap.Y-bp.Y)>5 then return ap.Y<bp.Y end
-        return ap.X<bp.X
-    end)
-    return out
-end
-function Bridge:ClosePopups()
-    for _,node in ipairs(self.Host:QueryDescendants('TextButton, ImageButton'))do
-        local name=node.Name:lower()
-        if self:IsPopup(node) and self:IsAvailable(node) and (name=='outside'or name:find('dismiss',1,true)or name:find('close',1,true))then
-            local handlers=callbacks(node,'Activated')
-            for _,fn in ipairs(handlers)do pcall(fn)end
-        end
-    end
-    for _,node in ipairs(self.Host:QueryDescendants('Frame, CanvasGroup'))do
-        if node.Name=='SummerEntryOptions' or node.Name=='BannerOptions' or node.Name=='TraitItemDropdown' or node.Name=='TraitDropdown' or node.Name=='ClaimTypesMenu' or node.Name=='CardCatalog' then
-            node.Visible=false
-            node:SetAttribute('Open',false)
-        end
-        if node.Name=='TeamUnitEditor'then node.Visible=false end
-    end
-end
-function Bridge:ListOwner(node)
-    local at=node
-    while at and at~=self.Host do
-        if at.Name=='DungeonItemCatalog' or at.Name=='DungeonItemPriority' or at.Name=='MerchantItems' or at.Name=='CardPriorityList' or at.Name=='AvailableCards' or at.Name=='ShopItems' or(at.Name=='Rewards'and at.Parent.Name=='ShrineRewardSettings')then return at end
-        at=at.Parent
-    end
-end
-function Bridge:InlineChoices(root)
-    local out,seen={},{}
-    for _,node in ipairs(root:QueryDescendants('TextButton, ImageButton, TextBox'))do
-        local owner=self:ListOwner(node)
-        if owner and self:IsAvailable(node) and node:IsA('TextBox') and node.TextEditable then
-            local selectButton=node.Parent:FindFirstChild('Select')
-            local title=selectButton and self:Caption(selectButton) or self:Caption(node.Parent)
-            out[#out+1]={id=node,name=title..' · Target quantity',kind='Input',value=node.Text,apply=function(value)
-                node.Text=tostring(value);self:Invoke(node,'FocusLost',true,nil)
-            end}
-        elseif owner and node:IsA('GuiButton') and self:IsAvailable(node) and node.Active and #callbacks(node,'Activated')>0 then
-            local row=node
-            while row.Parent and row.Parent~=owner do
-                if row==root then break end
-                row=row.Parent
-            end
-            local title=self:Caption(row)
-            local info=self:DungeonItemInfo(row)
-            if node.Name=='Select' then title=self:Caption(node) end
-            local action=({Up='Move up',Down='Move down',Remove='Remove'})[node.Name]
-            local selected=row:GetAttribute('PriorityIndex')~=nil
-            local marker=row:FindFirstChild('Selected')
-            if marker and marker:IsA('TextLabel')then selected=clean(marker.Text)~=''end
-            if action and owner.Name=='DungeonItemPriority'then
-                if not seen[row]then
-                    seen[row]=true
-                    local actions={}
-                    for _,key in ipairs({'Up','Down','Remove'})do local control=row:FindFirstChild(key);actions[key]=control and control.Active and #callbacks(control,'Activated')>0 end
-                    out[#out+1]={id=row,name=title,kind='Priority',description=info.description,price=info.price,tier=info.tier,section='Selected priority',rank=row:GetAttribute('PriorityIndex'),visual=self:Visual(row),actions=actions,apply=function(key)
-                        local control=row:FindFirstChild(key);assert(control and control.Active,'Priority action unavailable');self:Invoke(control,'Activated')
-                        if key=='Remove'then local deadline=os.clock()+1;while row.Parent and row:GetAttribute('Removing') and os.clock()<deadline do task.wait(.03)end end
-                    end}
-                end
-            elseif action or node==row or node.Name=='Select' then
-                out[#out+1]={id=node,name=title..(action and(' · '..action)or ''),kind=owner.Name=='DungeonItemCatalog'and'DungeonItem'or nil,description=info.description,price=info.price,tier=info.tier,section=owner.Name=='DungeonItemCatalog'and'Available items'or nil,visual=not action and self:Visual(row)or nil,detail=self:ItemDetail(row),selected=selected,apply=function()self:Invoke(node,'Activated')end}
-            end
-        end
-    end
-    table.sort(out,function(a,b)
-        local as=a.section=='Selected priority'and 1 or 2;local bs=b.section=='Selected priority'and 1 or 2
-        if as~=bs then return as<bs end
-        if as==1 and a.rank~=b.rank then return(a.rank or 999)<(b.rank or 999)end
-        local ap,bp=a.id.AbsolutePosition,b.id.AbsolutePosition
-        if math.abs(ap.Y-bp.Y)>5 then return ap.Y<bp.Y end
-        return ap.X<bp.X
-    end)
-    return out
-end
-function Bridge:OpenInline(record,ui,root)
-    ui:OpenChoices(record.Name,self:InlineChoices(root),function(choice,value)
-        choice.apply(value);task.wait()
-        return self:InlineChoices(root)
-    end,true,function()self:ClosePopups()end)
-end
-function Bridge:RunButton(record,ui)
-    if popupRoots[record.Node.Name] or record.Node.Name:match('^Slot%d$')then self:ClosePopups()end
-    self:Invoke(record.Node,'Activated')
-    task.wait()
-    if record.Node.Name=='DungeonShopTab' or record.Node.Name=='DungeonCurseTab' or record.Node.Name=='ChooseCardPriorities' then
-        if record.Node.Name=='ChooseCardPriorities' then
-            local catalog=record.Node.Parent:FindFirstChild('CardCatalog')
-            if catalog then catalog.Visible=true end
-        end
-        return self:OpenInline(record,ui,record.Node.Parent)
-    end
-    -- Actions such as WebhookTest, Save and Delete must never collect unrelated menus.
-    if not popupRoots[record.Node.Name] and not record.Node.Name:match('^Slot%d$')then return end
-    local choices=self:PopupChoices(record.Node)
-    if #choices>0 then
-        ui:OpenChoices(record.Name,choices,function(choice,value)
-            choice.apply(value)
-            task.wait()
-            return self:PopupChoices(record.Node)
-        end,true,function()self:ClosePopups()end)
-    elseif ui.Notify then
-        ui:Notify('No options available yet. Return to the lobby or wait for game data.')
-    end
-end
-function Bridge:Observe(node)
-    if self.ByNode[node] or not node.Parent or not self:Category(node) or self:IsPopup(node) or self:ListOwner(node) or ignore[node.Name] or node.Name:lower():find('search',1,true) then return end
-    if node:IsA('TextBox') then
-        if node.Name=='WebhookURL'then
-            local feature=getgenv().FyrelithWebhook
-            if feature then self:Register(node,{Kind='Input',Secret=false,Name='Webhook URL',Get=function()return feature.Config.URL end,Set=function(value)
-                assert(feature.SetURL(tostring(value)),feature.Status or 'Invalid webhook URL')
-            end})end
-            return
-        end
-        if node.TextEditable==false then return end
-        self:Register(node,{Kind='Input',Name=self:Caption(node),Get=function()return node.Text end,Set=function(value)
-            node.Text=tostring(value);if #callbacks(node,'FocusLost')>0 then self:Invoke(node,'FocusLost',true,nil)end
-        end})
-    elseif node:IsA('GuiButton') and #callbacks(node,'Activated')>0 then
-        if node.Name:match('^Slot%d$')and node.Parent.Name=='TeamControl'then return end
-        if node.Name=='PathPlacementMode'then
-            local auto=getgenv().FyrelithAutoPlay
-            if auto and auto.Config then
-                self:RegisterPicker(node,'Smart placement area',function()return auto.Config.UsePathPosition and 'Path percentage'or'Custom circles'end,function()
-                    return{{id=true,name='Path percentage',selected=auto.Config.UsePathPosition==true},{id=false,name='Custom circles',selected=auto.Config.UsePathPosition~=true}}
-                end,function(entry)if auto.Config.UsePathPosition~=entry.id then self:Invoke(node,'Activated')end end)
-            end
-            return
-        end
-        if node.Name:match('^Weather_') then
-            local id=node.Name:sub(9)
-            local summer=getgenv().FyrelithSummer
-            if summer and summer.Config then
-                self:RegisterToggle(node,self:Caption(node),'',function()return table.find(summer.Config.WeatherOrder,id)~=nil end,function(value)
-                    if (table.find(summer.Config.WeatherOrder,id)~=nil)~=value then self:Invoke(node,'Activated')end
-                end)
-            end
-            return
-        end
-        if node.Name=='PathPercentSlider' then
-            -- The shared Auto Place Path (%) control already edits the same value.
-            return
-        end
-        local track=node:FindFirstChild('Track')
-        local knob=track and track:FindFirstChild('Knob')
-        if knob then
-            self:RegisterToggle(node,self:Caption(node),'',function()
-                local attr=node:GetAttribute('Enabled')
-                return attr~=nil and attr==true or (attr==nil and knob.Position.X.Offset>15)
-            end,function(value)
-                local attr=node:GetAttribute('Enabled')
-                local current=attr~=nil and attr==true or (attr==nil and knob.Position.X.Offset>15)
-                if current~=value then self:Invoke(node,'Activated')end
-            end)
-        elseif node.Name=='SelectItems' then
-            local record=self:Register(node,{Kind='Button',Name='Gold Shop items',Get=function()return node.Value.Text end})
-            record.Set=function(_,ui)return self:RunButton(record,ui)end
-        elseif node:FindFirstChild('Value') and node.Value:IsA('TextLabel') then
-            self:RegisterPicker(node,self:Caption(node),function()return node.Value.Text end,function()
-                self:ClosePopups();self:Invoke(node,'Activated');task.wait();return self:PopupChoices(node)
-            end,function(entry)entry.apply();self:ClosePopups()end)
-        else
-            local record=self:Register(node,{Kind='Button',Name=self:Caption(node)})
-            if node.Name=='Mode' and node.Parent.Name=='ModeField'then
-                record.Name='Team mode';record.Get=function()return clean(node.Text)end
-            elseif node.Name:match('^Slot%d$')then
-                record.Name='Unit slot '..node.Name:sub(5)
-                record.Get=function()local text=node:FindFirstChild('UnitName');return text and clean(text.Text)or'Empty'end
-            elseif node.Name=='ChooseBanner'then record.Get=function()return clean(node.Text)end end
-            if node:IsA('TextButton')then
-                local title,value=clean(node.Text):match('^(.-)%s+·%s+(.+)$')
-                if title and value then
-                    record.Name=title
-                    record.Get=function()return clean(node.Text):match('^.-%s+·%s+(.+)$')or clean(node.Text)end
-                    record.ActionLabel='Change'
-                end
-            end
-            record.Set=function(_,ui)return self:RunButton(record,ui)end
-        end
-    end
-end
-function Bridge:IsRareSummon(rarity)
-    return rarity=='Mythic'or rarity=='Secret'or rarity=='Exclusive'
-end
-function Bridge:SummonHistoryEntries()
-    local feature=getgenv().FyrelithAutoSummon
-    local rows=feature and feature.History and feature.History.Rows or{}
-    self.SummonVisualCache=self.SummonVisualCache or{}
-    local entries={}
-    for index,record in ipairs(rows)do
-        if index>6 then break end
-        local source=self.SummonVisualCache[record.Id]
-        if not source or not source.Parent then
-            source=Instance.new('Frame');source.Name='Unit_'..record.Id;source.Visible=false;source.Parent=self.Host
-            self.SummonVisualCache[record.Id]=source
-        end
-        entries[#entries+1]={id=record.Id,name=record.Name..'\n'..record.Rarity..(record.Shiny and ' · Shiny'or'')..(record.Count>1 and(' · Total '..record.Count)or''),visual=self:Visual(source),record=record}
-    end
-    return entries
-end
-function Bridge:OnRareSummon(record)
-    if not self.Alive or not self:IsRareSummon(record.Rarity)then return end
-    local entries=self:SummonHistoryEntries()
-    for _,entry in ipairs(entries)do if entry.id==record.Id and entry.record.Shiny==record.Shiny then Hub:ShowSummonDrop(entry);break end end
-end
-function Bridge:Scan()
-    if not self.Alive or not self.Host then return end
-    for _,node in ipairs(self.Host:QueryDescendants('ScrollingFrame, Frame'))do
-        if node.Name=='LatestMythicIcon'and not self.ByNode[node]then
-            self:Register(node,{Kind='Gallery',Name='Mythic+ pulls',Options=function()return self:SummonHistoryEntries()end,Get=function()
-                local f=getgenv().FyrelithAutoSummon;local parts={}
-                for index,record in ipairs(f and f.History and f.History.Rows or{})do if index>6 then break end;parts[#parts+1]=record.Id..tostring(record.Count)..tostring(record.Shiny)end
-                return table.concat(parts,'|')
-            end})
-        end
-        if node.Name=='TeamControl' and not self.ByNode[node]then
-            local function entries()
-                local out={}
-                for i=1,6 do local slot=node:FindFirstChild('Slot'..i);if slot then
-                    local detail=slot:FindFirstChild('Details')
-                    out[#out+1]={id=slot,name=self:Caption(slot),visual=self:Visual(slot),detail=detail and detail.Text or'',slot=i}
-                end end
-                return out
-            end
-            self:Register(node,{Kind='Team',Name='Equipped team',Options=entries,Get=function()
-                local parts={};for _,entry in ipairs(entries())do parts[#parts+1]=entry.name..entry.detail..tostring(entry.visual~=nil)end
-                return table.concat(parts,'|')
-            end,Set=function(entry,ui)return self:RunButton({Node=entry.id,Name=entry.name..' settings'},ui)end})
-        end
-        if node.Name=='Units' and node.Parent.Name=='BannerUnitPreview' and not self.ByNode[node]then
-            self:Register(node,{Kind='Gallery',Name='Featured units',Options=function()return self:GalleryEntries(node)end,Get=function()
-                local names={};for _,entry in ipairs(self:GalleryEntries(node))do names[#names+1]=entry.name end
-                local chooser=node.Parent:FindFirstChild('ChooseBanner')
-                return (chooser and chooser.Text or '')..':'..table.concat(names,'|')
-            end})
-        end
-        if (node.Name=='MerchantItems' or node.Name=='ShopItems'or(node.Name=='Rewards'and node.Parent.Name=='ShrineRewardSettings')) and not self.ByNode[node] then
-            local record=self:Register(node,{Kind='Button',Name=node.Name=='MerchantItems' and 'Merchant items'or node.Name=='Rewards'and'Shrine reward filter'or'Summer shop items',ActionLabel='Choose items'})
-            record.Set=function(_,ui)return self:OpenInline(record,ui,node)end
-        end
-    end
-    for _,node in ipairs(self.Host:QueryDescendants('TextButton, ImageButton, TextBox'))do self:Observe(node) end
-    for _,node in ipairs(self.Host:QueryDescendants('TextLabel'))do
-        if node.Name=='AutoPlanPreview'and self:Category(node)and not self.ByNode[node]then
-            self:Register(node,{Kind='Status',Name='Plan step details',Get=function()return node.Text end})
-        end
-        if (node.Name=='Status' or node.Name=='Notice' or node.Name=='Progress' or node.Name=='PortalInventory' or node.Name=='WeatherOrder' or node.Name=='PrioritySummary' or node.Name=='WebhookStatus' or node.Name=='SmartAreaStatus') and self:Category(node) and not self:IsPopup(node) and not self.ByNode[node] then
-            self:Register(node,{Kind='Status',Name='Status',Get=function()return clean(node.Text)end})
-        end
-    end
-end
-function Bridge:Sync()
-    if not self.Alive or not self.Ready or not Hub.Alive then return end
-    self:Scan()
-    local added=false
-    Hub.BatchRegister=true
-    for _,record in ipairs(self.Records)do
-        local node=record.Node
-        local category=self:Category(node)
-        local currentAvailable=self:IsAvailable(node)
-        if record.Available~=currentAvailable then record.Available=currentAvailable;added=true end
-        if category and node.Parent then
-            if not record.Tool then
-                local value
-                if record.Get then local ok,result=pcall(record.Get);if ok then value=result end end
-                local tool=Hub:AddTool({
-                    Id=record.Id,Name=record.Name or self:Caption(node),Description=record.Description or '',
-                    Category=category,Kind=record.Kind,Value=value,Min=record.Min,Max=record.Max,Step=record.Step,
-                    Group=self:Group(node),ControlOrder=node.AbsolutePosition.Y*1000+node.AbsolutePosition.X,ActionLabel=record.ActionLabel,
-                    HasChoices=record.Kind=='Select' or popupRoots[node.Name]~=nil or node.Name:match('^Slot%d$')~=nil or node.Name=='DungeonShopTab' or node.Name=='DungeonCurseTab' or node.Name=='ChooseCardPriorities' or node.Name=='MerchantItems' or node.Name=='ShopItems'or node.Name=='Rewards',
-                    GetValue=record.Get,Options=record.Options,Secret=record.Secret,Available=function()return self:IsAvailable(node)end,
-                    Callback=function(value,ui)
-                        assert(self.Ready and self.Alive,'Game controller is not ready')
-                        if record.Set then return record.Set(value,ui)end
-                    end,
-                })
-                record.Tool=tool;added=true
-            else
-                local tool=record.Tool
-                if tool.Category~=category then tool.Category=category;added=true end
-                if record.Get and not tool.Busy and not tool.Editing then
-                    local ok,value=pcall(record.Get)
-                    if ok and tool.Value~=value then tool.Value=value;if tool.UpdateView then pcall(tool.UpdateView)end end
-                end
-            end
-        end
-    end
-    Hub.BatchRegister=false
-    if added then Hub:RefreshTools() end
-end
-function Bridge:CreateHost()
-    local old=player.PlayerGui:FindFirstChild('FyrelithUIOnly')
-    if old then old:Destroy()end
-    local function make(class,parent,name)
-        local x=Instance.new(class);x.Name=name;x.Parent=parent;return x
-    end
-    -- Only callback/data dependencies live here. Enabled remains false permanently.
-    local host=make('ScreenGui',player.PlayerGui,'FyrelithUIOnly')
-    host.Enabled=false;host.ResetOnSpawn=false;host.IgnoreGuiInset=true
-    host:SetAttribute('AuroraBackendOnly',true)
-    host:SetAttribute('Palette_card',Color3.fromRGB(23,23,25))
-    host:SetAttribute('Palette_field',Color3.fromRGB(31,31,34))
-    host:SetAttribute('Palette_line',Color3.fromRGB(44,44,44))
-    host:SetAttribute('Palette_accent',Color3.fromRGB(182,154,255))
-    local window=make('Frame',host,'Window');window.Visible=false;window.Size=UDim2.fromOffset(960,1040)
-    local content=make('Frame',window,'Content');content.Size=window.Size
-    local crisp=make('Frame',content,'CrispContent');crisp.Size=window.Size
-    local body=make('Frame',crisp,'Body');body.Size=UDim2.fromOffset(908,900)
-    for _,name in ipairs({'Overview','Main','Party','Auto Play','Dungeon','Macro','Summon','Event','Misc','Webhook','Utilities','Settings'})do
-        local page=make('ScrollingFrame',body,name);page.Size=UDim2.fromOffset(908,900);page.BackgroundTransparency=1
-    end
-    local appearance=make('Frame',body.Settings,'Appearance')
-    local themeRow=make('Frame',appearance,'ThemeRow');make('TextButton',themeRow,'ThemePicker')
-    make('ImageLabel',appearance,'Icon_Appearance');make('UIStroke',appearance,'UIStroke')
-    local setter=make('BindableFunction',host,'SetWindowOpen')
-    setter.OnInvoke=function(open)Hub:SetVisible(open==true)end
-    self.Host,self.Window,self.Body=host,window,body
-    self.Connections[#self.Connections+1]=host.DescendantAdded:Connect(function(node)
-        if node:IsA('GuiButton') or node:IsA('TextBox')then task.defer(function()if self.Alive and self.Ready then self:Observe(node)end end)end
-    end)
-    return host
-end
-function Bridge:Stop()
-    if not self.Alive then return end
-    local guard=getgenv().FyrelithPartyHostGuard
-    if guard and guard.Bridge==self and guard.Stop then guard.Stop()end
-    self.Alive=false
-    for _,connection in ipairs(self.Connections)do connection:Disconnect()end
-    if self.Host then self.Host:Destroy()end
-end
-Hub:OnCleanup(function()Bridge:Stop()end)
-return Bridge
-
-end)(Hub)
-getgenv().AuroraFyrelithBridge=Bridge
-Bridge:CreateHost()
-Hub:SetHealth('connecting')
-task.spawn(function()
-    local ok,err=xpcall(function()
-        local run,message=loadstring([====================[
-local Bridge = assert(getgenv().AuroraFyrelithBridge, 'Aurora bridge is missing')
-local fyEnv = getgenv()
-local playerGui = game:GetService('Players').LocalPlayer:WaitForChild('PlayerGui')
-local fyExecution = {Game=game,Build='AURORA_FYRELITH_MIGRATION_1',Starting=true,Ready=false,Gui=Bridge.Host}
-fyEnv.FyrelithExecutionState=fyExecution
-local function fyOwnsExecution()return Bridge.Alive and fyEnv.FyrelithExecutionState==fyExecution end
--- Own namespace: importing the backend does not activate an old saved session.
-local nativeRead,nativeWrite,nativeExists=readfile,writefile,isfile
-local storageRoot='.FYRELITH-Default-20261104'
-if type(makefolder)=='function'then pcall(makefolder,storageRoot)end
-local function storagePath(name)
-    name=tostring(name):gsub('\\','/')
-    assert(not name:find('..',1,true),'Unsafe storage path')
-    return storageRoot..'/'..name:gsub('[/]','_')
-end
-local function readfile(name)
-    assert(type(nativeRead)=='function','This environment does not support macro/config files')
-    local target=storagePath(name)
-    if false and name:match('^FyrelithBannerUnits_%d+%.json$') and type(nativeExists)=='function' and not nativeExists(target)then
-        local legacy='FyrelithDefaultSettings/'..name
-        if nativeExists(legacy)then return nativeRead(legacy)end
-    end
-    -- Import only user-authored collections once. Automation flags and old UI settings stay separate.
-    local collection=name:match('^FyrelithMacros_%d+_%d+%.json$') and 'Library'
-        or name:match('^FyrelithAutoPlay_%d+_%d+%.json$') and 'Plans'
-        or name:match('^FyrelithTeamControl_%d+_%d+%.json$') and 'Profiles'
-    if false and collection and type(nativeExists)=='function' and type(nativeWrite)=='function' and not nativeExists(target..'.collections-imported') then
-        pcall(function()
-            local http=game:GetService('HttpService')
-            local current=nativeExists(target) and http:JSONDecode(nativeRead(target)) or {}
-            local legacy='FyrelithDefaultSettings/'..(collection=='Library' and 'Macros/' or '')..name
-            if nativeExists(legacy) then
-                local previous=http:JSONDecode(nativeRead(legacy))
-                for _,key in ipairs(collection=='Plans' and {'Plans','Areas','SmartRestore'} or {collection})do
-                    if type(previous[key])=='table'then
-                        current[key]=type(current[key])=='table' and current[key] or {}
-                        for id,value in pairs(previous[key])do if current[key][id]==nil then current[key][id]=value end end
-                    end
-                end
-                nativeWrite(target,http:JSONEncode(current))
-            end
-            nativeWrite(target..'.collections-imported','1')
-        end)
-    end
-    return nativeRead(target)
-end
-local function writefile(name,data)
-    assert(type(nativeWrite)=='function','This environment does not support macro/config files')
-    return nativeWrite(storagePath(name),data)
-end
-local function isfile(name)
-    return type(nativeExists)=='function'and nativeExists(storagePath(name))or false
-end
-local storage={Ready=true,Epoch=0,Read=readfile,Write=writefile,Exists=isfile,Resolve=storagePath}
-fyEnv.FyrelithDefaultLoaderStorage=storage
+if leaveRouter.Early()then return end
+]============]
+local fyRuntimeEntry=[============[-- Fyrelith small teleport entry point. Install the delay before loading UI assets.
+getgenv().FyrelithDefaultCacheBooted=true
+local ok,err=pcall(function()
+ local prelude=assert(loadstring(readfile('.FyrelithDefaultCache/FyrelithLoadDelayPrelude.luau')))
+ prelude()
+end)
+if not ok then getgenv().FyrelithLoadDelayError=tostring(err)end
+if getgenv().FyrelithReturnLobbyInProgress then return end
+local source=readfile('.FyrelithDefaultCache/FyrelithRuntimePayload.luau')
+getgenv().FyrelithScriptSource=source
+local run,message=loadstring(source)
+if run then run()else warn('Fyrelith: '..tostring(message))end]============]
 local function fySaveRuntimeBundle(source)
-    assert(type(nativeWrite)=='function','Runtime caching is unavailable')
-    nativeWrite(storageRoot..'/Runtime.luau',source)
-    return true
+ writefile('.FyrelithDefaultCache/FyrelithLoadDelayPrelude.luau',fyLoadDelayPrelude)
+ writefile('.FyrelithDefaultCache/FyrelithRuntimePayload.luau',source)
+ -- Publish the small loader last, once both dependencies have been written.
+ writefile('.FyrelithDefaultCache/FyrelithRuntime.luau',fyRuntimeEntry)
 end
-local leaveRouter={Game=game,Version=1,Key='AuroraFyrelithPendingAutoLeave'}
-function leaveRouter.Decide(intent,experience,place,job,now)
-    if type(intent)~='table'or intent.Experience~=experience then return 'None'end
-    if type(intent.Issued)~='number'or now-intent.Issued>180000 then return 'Expired'end
-    if place==intent.LobbyPlaceId then return 'Lobby'end
-    if job==intent.SourceJob then return 'Same match'end
-    return 'Redirect'
-end
-function leaveRouter.Read()
-    local ok,value=pcall(game:GetService('TeleportService').GetTeleportSetting,game:GetService('TeleportService'),leaveRouter.Key)
-    return ok and value or nil
-end
-function leaveRouter.Clear()pcall(game:GetService('TeleportService').SetTeleportSetting,game:GetService('TeleportService'),leaveRouter.Key,nil)end
-function leaveRouter.Redirect(intent)
-    if type(intent)~='table'or not tonumber(intent.LobbyPlaceId)then return false end
-    if game:GetService('Players').LocalPlayer:GetAttribute('PartyId')~=nil then
-        local guard=fyEnv.FyrelithPartyHostGuard
-        return guard and guard.Alive and guard.Return and guard.Return()or false
-    end
-    game:GetService('TeleportService'):Teleport(intent.LobbyPlaceId,game:GetService('Players').LocalPlayer)
-    return true
-end
-fyEnv.FyrelithDefaultLeaveRouter=leaveRouter
-
--- One host policy for manual and automatic party transitions on this client.
-local fyPartyHost={Alive=true,LastBlocked=nil,Bridge=Bridge}
 do
- local E=getgenv()
- if E.FyrelithPartyHostGuard and E.FyrelithPartyHostGuard.Stop then E.FyrelithPartyHostGuard.Stop()end
- E.FyrelithPartyHostGuard=fyPartyHost
- function fyPartyHost.Ready()
-  local leave=E.FyrelithLeaveAtWave
-  if leave and leave.Config.Enabled and leave.Holding then return false,'Returning to lobby at the selected wave'end
-  local party=E.FyrelithParty
-  if not party or type(party.Ready)~='function'then return false,'Waiting for Party settings'end
-  return party.Ready()
+ local ok,err=pcall(function()assert(loadstring(fyLoadDelayPrelude))()end)
+ if not ok then fyEnv.FyrelithLoadDelayError=tostring(err)end
+end
+if fyEnv.FyrelithReturnLobbyInProgress then return end
+local fyBuild='FYRELITH_SUMMER_21_20261103_DATA20'
+local fyProfile='FyrelithDefaultNoMap'
+local fyPrior=fyEnv.FyrelithExecutionState
+if fyPrior and fyPrior.Game==game and fyPrior.Build==fyBuild and fyPrior.Profile==fyProfile and not fyPrior.Cancelled then
+ local healthy=fyPrior.Starting or (fyPrior.Ready and fyPrior.Gui and fyPrior.Gui.Parent and fyEnv.FyrelithAutoJoin and fyEnv.FyrelithAutoJoin.Alive)
+ if healthy then fyPrior.DuplicateCount=(fyPrior.DuplicateCount or 0)+1 return end
+end
+if fyPrior then fyPrior.Cancelled=true end
+local fyExecution={Game=game,Build=fyBuild,Profile=fyProfile,Starting=true,Ready=false,Started=os.clock(),DuplicateCount=0}
+fyEnv.FyrelithExecutionState=fyExecution
+local function fyOwnsExecution()return fyEnv.FyrelithExecutionState==fyExecution and not fyExecution.Cancelled end
+
+getgenv().FyrelithEarlyRenderSource=[========[
+-- Restore rendering before waiting for game modules or constructing the UI.
+do
+ local env=getgenv()
+ local execution=env.FyrelithExecutionState
+ if execution and execution.Game==game and execution.Ready and execution.Gui and execution.Gui.Parent then
+  local feature=env.FyrelithBlackScreen if feature and feature.Alive and feature.Enabled and feature.Reapply then feature.Reapply() end
+  return
  end
- function fyPartyHost.Decide(state,action)
-  action=action or'Return to Lobby'
-  if state.PartyId==nil then return true,'Solo player'end
-  if tonumber(state.OwnerId)~=tonumber(state.UserId)then return false,'Only the party host can choose '..action end
-  if state.Lobby then return true,'Already in lobby'end
-  if action=='Return to Lobby'and not state.Finished then return false,'Whole-party return is available after the match ends'end
-  return true,'Party host'
- end
- function fyPartyHost.State()
-  local player=game:GetService('Players').LocalPlayer
-  local ready=E.FyrelithGameReady
-  local data=workspace:FindFirstChild('_DATA')
-  local finished=data and data:FindFirstChild('GameFinished')
-  return {UserId=player.UserId,PartyId=player:GetAttribute('PartyId'),OwnerId=player:GetAttribute('PartyOwnerId'),Lobby=ready and ready.Loader.IsLobby==true,Finished=finished and finished.Value==true}
- end
- function fyPartyHost.Check(notify,action)
-  local allowed,reason=fyPartyHost.Decide(fyPartyHost.State(),action)
-  if not allowed then
-   fyPartyHost.LastBlocked=reason
-   if notify and (not fyPartyHost.LastNotice or os.clock()-fyPartyHost.LastNotice>3)then
-    fyPartyHost.LastNotice=os.clock()
-    if type(Bridge.Notify)=='function'then Bridge:Notify(reason)end
+ local old=env.FyrelithRenderBootstrap if old and not old.Active and old.Finish then old.Finish() end
+ local prior=env.FyrelithRuntime if prior and prior.Alive and prior.Save then pcall(prior.Save) end
+ local state=old and old.Active and old or {Active=false,Applied=false,Started=os.clock(),PreviousFeature=env.FyrelithBlackScreen}
+ env.FyrelithRenderBootstrap=state
+ local player=game:GetService('Players').LocalPlayer
+ while not player do task.wait() player=game:GetService('Players').LocalPlayer end
+ local disabled=false
+ pcall(function()
+  local data=game:GetService('HttpService'):JSONDecode(readfile('FyrelithSession_'..player.UserId..'_'..game.GameId..'.json'))
+  disabled=type(data.UI)=='table' and data.UI.RenderingDisabled==true
+ end)
+ if not disabled then local feature=env.FyrelithBlackScreen disabled=feature and feature.Alive and feature.Enabled==true or false end
+ local run=game:GetService('RunService')
+ local overlay,connection
+ if not state.Finish then function state.Finish()
+  state.Active=false
+  if connection then connection:Disconnect() connection=nil end
+  if overlay then overlay:Destroy() overlay=nil end
+ end end
+ if disabled and not state.Active then
+  local ok,err=pcall(function()run:Set3dRenderingEnabled(false)end)
+  state.Applied=ok state.Error=not ok and tostring(err)or nil
+  if ok then
+   state.Active=true state.AppliedAt=os.clock()
+   local function cover()
+    if not state.Active or overlay then return end
+    local parent=player:FindFirstChildOfClass('PlayerGui') if not parent then return end
+    overlay=Instance.new('ScreenGui')overlay.Name='FyrelithRenderBootCover'overlay.IgnoreGuiInset=true overlay.ResetOnSpawn=false overlay.DisplayOrder=2147483645
+    local fill=Instance.new('Frame')fill.Size=UDim2.fromScale(1,1)fill.BackgroundColor3=Color3.new()fill.BorderSizePixel=0 fill.Parent=overlay overlay.Parent=parent
    end
+   cover()
+   connection=run.Heartbeat:Connect(function()
+    if not state.Active then return end
+    local feature=env.FyrelithBlackScreen
+    if feature and feature~=state.PreviousFeature and feature.Alive and feature.Enabled and feature.RenderingOff and feature.BootReady then state.Finish() return end
+    pcall(function()run:Set3dRenderingEnabled(false)end) cover()
+   end)
+   task.delay(60,function()
+    if state.Active then state.TimedOut=true state.Finish() pcall(function()run:Set3dRenderingEnabled(true)end) end
+   end)
   end
-  return allowed,reason
  end
- function fyPartyHost.Return()
-  local allowed,reason=fyPartyHost.Check(true);if not allowed then return false,reason end
-  local state=fyPartyHost.State();if state.Lobby then return false,'Already in lobby'end
-  local ready=E.FyrelithGameReady
-  local service=ready and ready.Loader.load_client_service(script,'TeleportServiceClient')
-  if not service or type(service.back_to_lobby)~='function'then return false,'Native lobby return is unavailable'end
-  service.back_to_lobby()
-  return true
+ local queue=queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
+ if type(queue)=='function' and type(env.FyrelithEarlyRenderSource)=='string' and not env.FyrelithDefaultRenderPreludeQueued then
+  local ok,err=pcall(queue,env.FyrelithEarlyRenderSource)
+  env.FyrelithDefaultRenderPreludeQueued=ok state.QueueError=not ok and tostring(err)or nil
  end
- function fyPartyHost.Install()
-  local ready=assert(E.FyrelithGameReady)
-  local endpoints=ready.Services.EndpointsClient
-  local original=endpoints.invoke_server
-  local hostActions={teleport_back_to_lobby='Return to Lobby',set_game_finished_vote='Retry / Next',request_start_infinite_tower_from_game='Next Room',dungeon_start='Start Dungeon',dungeon_enter_room='Next Room',dungeon_continue_shop='Continue Dungeon',dungeon_continue_death='Retry Dungeon',dungeon_shrine_accept='Continue Dungeon'}
-  local function invoke(endpoint,...)
-   local action=hostActions[endpoint]
-   if fyPartyHost.Alive and fyOwnsExecution()and action then
-    if not fyPartyHost.Check(true,action)then return false end
-    if endpoint=='teleport_back_to_lobby'then
-     -- Private hubs are resolved from the lobby, where hub_get_state is supported.
-     -- One public gateway also avoids stale ReturnServerOwner and the server picker.
-     local private=E.FyrelithPrivateServer
-     if private and private.PrepareLobbyReturn then private.PrepareLobbyReturn()end
-     return original(endpoint,'public')
-    end
+end
+]========]
+-- Restore rendering before waiting for game modules or constructing the UI.
+do
+ local env=getgenv()
+ local execution=env.FyrelithExecutionState
+ if execution and execution.Game==game and execution.Ready and execution.Gui and execution.Gui.Parent then
+  local feature=env.FyrelithBlackScreen if feature and feature.Alive and feature.Enabled and feature.Reapply then feature.Reapply() end
+  return
+ end
+ local old=env.FyrelithRenderBootstrap if old and not old.Active and old.Finish then old.Finish() end
+ local prior=env.FyrelithRuntime if prior and prior.Alive and prior.Save then pcall(prior.Save) end
+ local state=old and old.Active and old or {Active=false,Applied=false,Started=os.clock(),PreviousFeature=env.FyrelithBlackScreen}
+ env.FyrelithRenderBootstrap=state
+ local player=game:GetService('Players').LocalPlayer
+ while not player do task.wait() player=game:GetService('Players').LocalPlayer end
+ local disabled=false
+ pcall(function()
+  local data=game:GetService('HttpService'):JSONDecode(readfile('FyrelithSession_'..player.UserId..'_'..game.GameId..'.json'))
+  disabled=type(data.UI)=='table' and data.UI.RenderingDisabled==true
+ end)
+ if not disabled then local feature=env.FyrelithBlackScreen disabled=feature and feature.Alive and feature.Enabled==true or false end
+ local run=game:GetService('RunService')
+ local overlay,connection
+ if not state.Finish then function state.Finish()
+  state.Active=false
+  if connection then connection:Disconnect() connection=nil end
+  if overlay then overlay:Destroy() overlay=nil end
+ end end
+ if disabled and not state.Active then
+  local ok,err=pcall(function()run:Set3dRenderingEnabled(false)end)
+  state.Applied=ok state.Error=not ok and tostring(err)or nil
+  if ok then
+   state.Active=true state.AppliedAt=os.clock()
+   local function cover()
+    if not state.Active or overlay then return end
+    local parent=player:FindFirstChildOfClass('PlayerGui') if not parent then return end
+    overlay=Instance.new('ScreenGui')overlay.Name='FyrelithRenderBootCover'overlay.IgnoreGuiInset=true overlay.ResetOnSpawn=false overlay.DisplayOrder=2147483645
+    local fill=Instance.new('Frame')fill.Size=UDim2.fromScale(1,1)fill.BackgroundColor3=Color3.new()fill.BorderSizePixel=0 fill.Parent=overlay overlay.Parent=parent
    end
-   return original(endpoint,...)
+   cover()
+   connection=run.Heartbeat:Connect(function()
+    if not state.Active then return end
+    local feature=env.FyrelithBlackScreen
+    if feature and feature~=state.PreviousFeature and feature.Alive and feature.Enabled and feature.RenderingOff and feature.BootReady then state.Finish() return end
+    pcall(function()run:Set3dRenderingEnabled(false)end) cover()
+   end)
+   task.delay(60,function()
+    if state.Active then state.TimedOut=true state.Finish() pcall(function()run:Set3dRenderingEnabled(true)end) end
+   end)
   end
-  endpoints.invoke_server=invoke
-  local service=ready.Loader.load_client_service(script,'TeleportServiceClient')
-  local originals,wrappers={},{}
-  for _,key in ipairs({'back_to_lobby','_pick_lobby'})do
-   if type(service[key])=='function'then
-    local fn=service[key];originals[key]=fn
-    local function guarded(...)
-     if fyPartyHost.Alive and fyOwnsExecution()and not fyPartyHost.Check(true)then return false end
-     if fyPartyHost.Alive and fyOwnsExecution()and key=='_pick_lobby'then
-      return endpoints.invoke_server('teleport_back_to_lobby','public')
-     end
-     return fn(...)
-    end
-    wrappers[key]=guarded;service[key]=guarded
-   end
-  end
-  function fyPartyHost.Stop()
-   fyPartyHost.Alive=false
-   if endpoints.invoke_server==invoke then endpoints.invoke_server=original end
-   for key,wrapper in pairs(wrappers)do if service[key]==wrapper then service[key]=originals[key]end end
-  end
-  Bridge.Connections[#Bridge.Connections+1]=Bridge.Host.Destroying:Connect(fyPartyHost.Stop)
+ end
+ local queue=queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
+ if type(queue)=='function' and type(env.FyrelithEarlyRenderSource)=='string' and not env.FyrelithDefaultRenderPreludeQueued then
+  local ok,err=pcall(queue,env.FyrelithEarlyRenderSource)
+  env.FyrelithDefaultRenderPreludeQueued=ok state.QueueError=not ok and tostring(err)or nil
  end
 end
 
+
+repeat task.wait() until game:IsLoaded()
+if not fyOwnsExecution() then return end
+do
+ local env=getgenv()
+ local prior=env.FyrelithRuntime
+ if prior then
+  if prior.Alive and prior.Save then pcall(prior.Save) end
+  prior.Alive=false
+  if prior.Connection then prior.Connection:Disconnect() end
+  if prior.PreferenceConnection then prior.PreferenceConnection:Disconnect() end
+ end
+ local source=env.FyrelithScriptSource
+ if type(source)=='string' and type(writefile)=='function' then pcall(fySaveRuntimeBundle,source) end
+ local queue=queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
+ if type(queue)=='function' and not env.FyrelithDefaultTeleportQueued then
+  local ok=pcall(queue,[=[
+local source=readfile('.FyrelithDefaultCache/FyrelithRuntime.luau')
+getgenv().FyrelithScriptSource=source
+local run,err=loadstring(source)
+if run then run() else warn('Fyrelith: '..tostring(err)) end
+]=])
+  if ok then env.FyrelithDefaultTeleportQueued=true end
+ end
+end
+
+
+-- Stop the previous installation before attaching one shared idle controller.
+do
+ local environment=getgenv()
+ for _,name in ipairs({'FyrelithAntiAFK','FyrelithIdleRecovery','FyrelithAutoCaptcha'})do
+  local previous=environment[name]
+  if previous then
+   if previous.Cleanup then pcall(previous.Cleanup) elseif previous.Stop then pcall(previous.Stop)end
+   previous.Alive=false
+  end
+ end
+end
+-- LastInput tracks real activity; synthetic keep-alives must not postpone Auto Walk.
+do
+ local environment=getgenv()
+ local idle={Alive=true,LastInput=os.clock(),LastPulse=-math.huge,Connections={},PulseCount=0}
+ environment.FyrelithAntiAFK=idle
+ function idle.Stop()
+  idle.Alive=false
+  for _,connection in ipairs(idle.Connections)do connection:Disconnect()end
+  table.clear(idle.Connections)
+ end
+ idle.Cleanup=idle.Stop
+ task.spawn(function()
+  local players=game:GetService('Players')
+  local player=players.LocalPlayer
+  while idle.Alive and not player do task.wait(.1) player=players.LocalPlayer end
+  if not idle.Alive then return end
+  local input=game:GetService('UserInputService')
+  local function activity()
+   if idle.Alive and not idle.SendingInput then idle.LastInput=os.clock() end
+  end
+  for _,signal in ipairs({input.InputBegan,input.InputChanged,input.InputEnded})do
+   table.insert(idle.Connections,signal:Connect(activity))
+  end
+  function idle.Pulse()
+   if not idle.Alive or idle.SendingInput or os.clock()-idle.LastPulse<60 then return end
+   idle.LastPulse=os.clock() idle.SendingInput=true
+   local ok,err=pcall(function()
+    local user=game:GetService('VirtualUser')
+    user:CaptureController()
+    user:ClickButton2(Vector2.new(0,0))
+   end)
+   idle.SendingInput=false
+   idle.LastError=not ok and tostring(err) or nil
+   idle.Active=ok
+   if ok then idle.PulseCount+=1 end
+  end
+  table.insert(idle.Connections,player.Idled:Connect(idle.Pulse))
+  while idle.Alive do
+   if os.clock()-idle.LastInput>=90 then idle.Pulse() end
+   task.wait(1)
+  end
+ end)
+end
+task.spawn(function()
+local startupOK,startupError=xpcall(function()
+local function waitForFyrelithGame()
+ local player=game:GetService('Players').LocalPlayer
+ while not player do task.wait(.1) player=game:GetService('Players').LocalPlayer end
+ local config=workspace:WaitForChild('_MAP_CONFIG') config:WaitForChild('IsLobby')
+ local module=game:GetService('ReplicatedStorage'):WaitForChild('src'):WaitForChild('Loader')
+ local Loader=require(module)
+ local required={'EndpointsClient','LobbyServiceClient','UnitCollectionServiceClient','GUIService','SummonServiceClient','SummonFX','GoldShopServiceClient'}
+ while true do
+  local registry
+  if debug and type(debug.getupvalues)=='function' then
+   local ok,upvalues=pcall(debug.getupvalues,Loader.load_client_service)
+   if ok then for _,v in pairs(upvalues) do if type(v)=='table' and v.EndpointsClient then registry=v break end end end
+  end
+  local ready={} local complete=true
+  if registry then
+   for _,name in ipairs(required) do local entry=registry[name]
+    ready[name]=entry and entry.module
+    if type(ready[name])~='table' then complete=false break end
+   end
+  elseif player:FindFirstChild('_stats') and player:FindFirstChild('_settings') then
+   -- Fallback for executors without upvalue inspection.
+   for _,name in ipairs(required) do local ok,value=pcall(Loader.load_client_service,module,name)
+    ready[name]=ok and value or nil if type(ready[name])~='table' then complete=false break end
+   end
+  else complete=false end
+  if complete then
+   local U=ready.UnitCollectionServiceClient local E=ready.EndpointsClient local G=ready.GUIService
+   if type(E.invoke_server)=='function' and E.session and G.session and U.session and U.session.profile_data and U.session.collection and U.session.inventory then
+    getgenv().FyrelithGameReady={Loader=Loader,Services=ready,JobId=game.JobId}
+    return Loader
+   end
+  end
+  task.wait(.25)
+ end
+end
+waitForFyrelithGame()
+
+if not fyOwnsExecution() then return end
+local function createHost()
+-- FYRELITH HUB | Standalone UI framework. No game-specific functions.
+-- OBSIDIAN / Space + Halloween / v6
+-- Executor edition: run this one file. Both user-provided images are embedded.
+-- Images use writefile + getcustomasset/getsynasset; no upload or HTTP required.
+-- Preferences are saved automatically per account and experience across rejoins.
+-- Set this to the uploaded Roblox Image ID for Obsidian-Logo.png.
+-- Example format: "rbxassetid://YOUR_IMAGE_ID" (use your actual numeric ID).
+-- The attached logo is embedded below, so no upload or separate image is required.
+
+
+local LOGO_IMAGE=loadRemoteImage('Obsidian-Logo-91ece6806f23-compact-v1.png')
+local LAUNCHER_IMAGE=loadRemoteImage('Obsidian-Launcher-258f87eab02e-compact-v1.png')
+
+
+--[[
+Microsoft Fluent Emoji artwork
+https://github.com/microsoft/fluentui-emoji
+    MIT License
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
+
+]]
+local HALLOWEEN_IMAGES={pumpkin=loadRemoteImage('Fyrelith-Halloween-pumpkin-8a50525726bf-compact-v1.png'),web=loadRemoteImage('Fyrelith-Halloween-web-57f7718ec81b-compact-v1.png'),ghost=loadRemoteImage('Fyrelith-Halloween-ghost-2a07c00a4af1-compact-v1.png'),bat=loadRemoteImage('Fyrelith-Halloween-bat-4044ac8c7d72-compact-v1.png'),moon=loadRemoteImage('Fyrelith-Halloween-moon-0a5b51923909-compact-v1.png')}
+local DEEP_VOID_IMAGE=loadRemoteImage('Fyrelith-Deep-Void-ca8e3b10fabf-compact-v1.jpg')
+local Players = game:GetService('Players')
+local TweenService = game:GetService('TweenService')
+local Input = game:GetService('UserInputService')
+local RunService = game:GetService('RunService')
+local Lighting = game:GetService('Lighting')
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild('PlayerGui')
+for _,name in ipairs({'FyrelithUIOnly'}) do
+ local old=playerGui:FindFirstChild(name)
+ if old then old:Destroy() end
+end
+local store=playerGui:FindFirstChild('FyrelithDefaultPreferences')
+if not store then store=Instance.new('Configuration'); store.Name='FyrelithDefaultPreferences'; store.Parent=playerGui end
+pcall(function()
+ local filename='FyrelithSession_'..player.UserId..'_'..game.GameId..'.json'
+ if type(readfile)=='function' and type(isfile)=='function' and isfile(filename) then
+  local saved=game:GetService('HttpService'):JSONDecode(readfile(filename))
+  for k,v in pairs(saved.UI or {}) do if type(v)=='string' or type(v)=='number' or type(v)=='boolean' then store:SetAttribute(k,v) end end
+ end
+end)
+local function pref(key,default)
+ local value=store:GetAttribute(key)
+ if type(value)~=type(default) then value=store:GetAttribute(key) end
+ if type(value)~=type(default) then return default end
+ if value==nil then return default end
+ return value
+end
+local state={theme=pref('Theme','Standard'),accent=pref('Accent',1),scale=pref('Scale',100),smooth=pref('Smooth',true),reduce=pref('ReduceMotion',false),tips=pref('Tooltips',true),stars=pref('Stars',true),showIcon=pref('ShowIcon',true),border=pref('AnimatedBorder',true),page='Settings',open=true}
+if store:GetAttribute('RoseEclipseRevision')~=2 then state.theme='Space' state.accent=1 state.scale=100 store:SetAttribute('RoseEclipseRevision',2)end
+local launcher
+local savedHotkey=pref('Hotkey','LeftControl')
+local hotkey=Enum.KeyCode.RightShift
+for _,key in ipairs(Enum.KeyCode:GetEnumItems()) do if key.Name==savedHotkey then hotkey=key; break end end
+if hotkey==Enum.KeyCode.Unknown or hotkey==Enum.KeyCode.Escape then hotkey=Enum.KeyCode.RightShift end
+local capturingKey=false
+local function keyName(key)
+ return key.Name:gsub('(%l)(%u)','%1 %2')
+end
+if state.theme~='Space' and state.theme~='Halloween' and state.theme~='Standard' and state.theme~='Event Horizon' and state.theme~='Nebula Violet' and state.theme~='Stardust Blue' then state.theme='Standard' end
+local scaleMaximum=game:GetService('UserInputService').TouchEnabled and 200 or 110
+state.scale=math.clamp(tonumber(state.scale) or 100,75,scaleMaximum)
+state.accent=math.clamp(tonumber(state.accent) or 1,1,7)
+local themes={
+ ['Event Horizon']={bg=Color3.fromRGB(12,12,13),card=Color3.fromRGB(24,23,22),side=Color3.fromRGB(18,17,16),field=Color3.fromRGB(38,34,29),line=Color3.fromRGB(91,78,58),accent=Color3.fromRGB(231,191,133),secondary=Color3.fromRGB(255,226,181)},
+ ['Nebula Violet']={bg=Color3.fromRGB(14,12,22),card=Color3.fromRGB(25,22,38),side=Color3.fromRGB(20,17,30),field=Color3.fromRGB(38,31,54),line=Color3.fromRGB(79,65,112),accent=Color3.fromRGB(187,156,239),secondary=Color3.fromRGB(224,208,255)},
+ ['Stardust Blue']={bg=Color3.fromRGB(9,15,24),card=Color3.fromRGB(17,27,41),side=Color3.fromRGB(12,21,33),field=Color3.fromRGB(25,40,59),line=Color3.fromRGB(52,78,110),accent=Color3.fromRGB(121,185,245),secondary=Color3.fromRGB(193,226,255)},
+ Standard={accent=Color3.fromRGB(98,166,255)},
+ Space={bg=Color3.fromRGB(15,13,17),card=Color3.fromRGB(24,21,26),side=Color3.fromRGB(19,16,21),field=Color3.fromRGB(37,29,35),line=Color3.fromRGB(83,62,73),accent=Color3.fromRGB(220,150,166),secondary=Color3.fromRGB(245,208,216)},
+ Halloween={bg=Color3.fromRGB(19,17,29),card=Color3.fromRGB(29,25,40),side=Color3.fromRGB(21,18,31),field=Color3.fromRGB(39,31,48),line=Color3.fromRGB(75,57,89),accent=Color3.fromRGB(255,151,78),secondary=Color3.fromRGB(181,133,249)},
+}
+local white=Color3.fromRGB(240,243,249)
+local muted=Color3.fromRGB(194,203,219)
+local swatches={false,Color3.fromRGB(145,96,255),Color3.fromRGB(237,83,157),Color3.fromRGB(50,199,218),Color3.fromRGB(81,210,126),Color3.fromRGB(255,190,79),Color3.fromRGB(139,151,177)}
+local connections,bindings,activeTweens={},{},{}
+local dead=false
+local function on(signal,fn)
+ local c=signal:Connect(fn); table.insert(connections,c); return c
+end
+local function new(class,props,parent)
+ local obj=Instance.new(class)
+ for k,v in pairs(props or {}) do obj[k]=v end
+ obj.Parent=parent
+ return obj
+end
+local function round(obj,r) new('UICorner',{CornerRadius=UDim.new(0,r or 10)},obj) end
+local function stroke(obj,color,transparency)
+ return new('UIStroke',{Color=color or white,Thickness=1,Transparency=transparency or 0,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},obj)
+end
+local function palette()
+ local p=themes[state.theme]
+ local accent=swatches[state.accent] or p.accent
+ if state.theme=='Standard' then
+  -- Neutral dark surfaces receive a restrained tint from the selected accent.
+  p={
+   bg=Color3.fromRGB(13,16,22):Lerp(accent,.115),
+   card=Color3.fromRGB(21,25,33):Lerp(accent,.13),
+   side=Color3.fromRGB(15,18,25):Lerp(accent,.09),
+   field=Color3.fromRGB(29,34,44):Lerp(accent,.15),
+   line=Color3.fromRGB(55,63,78):Lerp(accent,.26),
+   accent=accent,secondary=accent:Lerp(Color3.new(1,1,1),.15),
+  }
+ end
+ return p,accent
+end
+local function bind(obj,property,role)
+ table.insert(bindings,{obj=obj,property=property,role=role})
+ local p,a=palette(); obj[property]=type(role)=='function' and role(p,a) or p[role]
+end
+local function animate(obj,props,duration)
+ -- One tween per object prevents stale hover/theme animations fighting each other.
+ if activeTweens[obj] then activeTweens[obj]:Cancel() end
+ if not state.smooth or state.reduce then
+  for k,v in pairs(props) do obj[k]=v end
+  return
+ end
+ local goals={}
+ for property,value in pairs(props) do
+  local kind=typeof(value)
+  if kind=='ColorSequence' or kind=='NumberSequence' then obj[property]=value
+  else goals[property]=value end
+ end
+ if not next(goals) then activeTweens[obj]=nil return end
+ local t=TweenService:Create(obj,TweenInfo.new(duration or .22,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),goals)
+ activeTweens[obj]=t; t:Play()
+end
+local function text(parent,value,x,y,w,h,size,color,bold)
+ return new('TextLabel',{BackgroundTransparency=1,Text=value,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),Font=bold and Enum.Font.GothamBold or Enum.Font.Gotham,TextSize=(size or 16)>=28 and (size or 16) or math.max(14,math.floor((size or 16)*1.16+.5)),TextColor3=color or white,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Center,TextTruncate=Enum.TextTruncate.AtEnd},parent)
+end
+local function panel(parent,name,x,y,w,h,role,r)
+ local obj=new('Frame',{Name=name,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),BorderSizePixel=0},parent)
+ round(obj,r or 10); bind(obj,'BackgroundColor3',role or 'card')
+ local s=stroke(obj); bind(s,'Color','line')
+ return obj
+end
+local function line(parent,x,y,w)
+ local obj=new('Frame',{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,1),BorderSizePixel=0},parent)
+ bind(obj,'BackgroundColor3','line'); obj.BackgroundTransparency=.45
+ return obj
+end
+-- Lucide (ISC) image assets via frappedevs/lucideblox (MIT).
+-- https://github.com/frappedevs/lucideblox/blob/master/src/modules/util/icons.json
+-- Static image IDs only: no remote code is downloaded or executed.
+local iconAssets={Play=7743871480,Send=7734053039,Calendar=7733919198,Map=7733992829,MacroCode=7733779730,
+ Overview=7733960981, Player=7743875962, Main=10734975486, Visuals=7733774602,
+ Utilities=7733917120, Settings=7734053495, Appearance=7733701455,
+ Interface=7734002839, Search=7734052925, Close=7743878857,
+ Minimize=7734000129, Chevron=7733717447, Save=7734052335, Star=7734068321,
+}
+local iconImages={}
+local function icon(parent,kind,x,y,size,color)
+ local image=new('ImageLabel',{Name='Icon_'..kind,BackgroundTransparency=1,
+  Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(size,size),
+  Image='rbxassetid://'..assert(iconAssets[kind],'Unknown icon: '..kind),
+  ImageColor3=color or white,ScaleType=Enum.ScaleType.Fit,
+  ResampleMode=Enum.ResamplerMode.Default},parent)
+ table.insert(iconImages,image)
+ local function setColor(c) image.ImageColor3=c end
+ return image,setColor,{image}
+end
+-- Load the shared font families before the first visible frame.
+pcall(function()
+ game:GetService('ContentProvider'):PreloadAsync({
+  Font.fromEnum(Enum.Font.Gotham).Family,
+  Font.fromEnum(Enum.Font.GothamBold).Family,
+  Font.fromEnum(Enum.Font.GothamMedium).Family,
+ })
+end)
+if not fyOwnsExecution()then return end
+for _,previous in ipairs(playerGui:GetChildren())do
+ if previous:IsA('ScreenGui')and previous.Name=='FyrelithUIOnly'then previous:Destroy()end
+end
+local gui=new('ScreenGui',{Name='FyrelithUIOnly',ResetOnSpawn=false,IgnoreGuiInset=true,ScreenInsets=Enum.ScreenInsets.None,ClipToDeviceSafeArea=false,DisplayOrder=2147483647,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},playerGui)
+fyExecution.Gui=gui
+local blur=new('BlurEffect',{Name='FyrelithUIOnlyBlur',Size=0},Lighting)
+local root=new('Frame',{Name='Window',Visible=false,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(960,1040),BackgroundTransparency=1},gui)
+local uiScale=new('UIScale',{Scale=1},root)
+local motion=new('CanvasGroup',{Name='Motion',AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.new(1,48,1,48),BackgroundTransparency=1,GroupTransparency=0},root)
+
+local canvas=new('Frame',{Name='Content',AnchorPoint=Vector2.new(.5,.5),BackgroundTransparency=1,Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(960,1040)},root)
+local motionScale=new('UIScale',{Name='ContentMotionScale',Scale=1},canvas)
+round(canvas,18)
+-- Layered shadow avoids dependencies on external images.
+for i=5,1,-1 do
+ local shadow=new('Frame',{Name='Shadow',Position=UDim2.fromOffset(-i*3,i),Size=UDim2.new(1,i*6,1,i*5),BackgroundColor3=Color3.new(),BackgroundTransparency=.94,BorderSizePixel=0,ZIndex=1},canvas)
+ round(shadow,12+i*2)
+end
+local surface=new('CanvasGroup',{Name='Surface',Position=UDim2.fromOffset(0,0),Size=UDim2.fromOffset(960,1040),BorderSizePixel=0,ClipsDescendants=true},canvas)
+surface.Active=true;round(surface,18);bind(surface,'BackgroundColor3','bg')
+do local edge=stroke(surface);bind(edge,'Color','line') end
+-- The outer CanvasGroup masks every background layer to the same rounded silhouette.
+-- Layered perimeter lighting is native GUI geometry and follows the theme.
+do
+ local lighting=new('Frame',{Name='AnimatedBorder',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Active=false,ZIndex=8,Visible=state.border},root)
+ local gradients={}
+ for i,width in ipairs({12,6,1.8})do
+  local ring=new('Frame',{Name='GlowLayer'..i,BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Active=false},lighting)
+  round(ring,18)
+  local edge=stroke(ring,nil,({.92,.70,.05})[i]);edge.Thickness=width
+  bind(edge,'Color','accent')
+  local gradient=new('UIGradient',{Rotation=i*8,Color=ColorSequence.new(Color3.new(1,1,1)),Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.32,.98),NumberSequenceKeypoint.new(.44,.65),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(.56,.65),NumberSequenceKeypoint.new(.68,.98),NumberSequenceKeypoint.new(1,1)})},edge)
+  gradients[i]=gradient
+ end
+ local elapsed=0
+ on(RunService.RenderStepped,function(dt)
+  lighting.Visible=state.border and state.open
+  if not state.border or not state.open or state.reduce or not state.smooth then return end
+  elapsed+=math.min(dt,.1)
+  for i,gradient in ipairs(gradients)do gradient.Rotation=(elapsed*56+i*8)%360 end
+ end)
+end
+
+-- Deep Void: one cinematic texture behind the existing, fixed-size controls.
+local spaceArt={}
+spaceArt.group=new('Frame',{Name='DeepVoidBackground',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Visible=(state.theme=='Space' or state.theme=='Event Horizon' or state.theme=='Nebula Violet' or state.theme=='Stardust Blue'),Active=false},surface)
+spaceArt.group.ClipsDescendants=true
+spaceArt.image=new('ImageLabel',{Name='BlackHole',Image=DEEP_VOID_IMAGE,ImageColor3=Color3.fromRGB(255,176,195),BackgroundTransparency=1,ImageTransparency=.12,ScaleType=Enum.ScaleType.Crop,Position=UDim2.fromScale(-.03,-.03),Size=UDim2.fromScale(1.06,.29),Active=false},spaceArt.group)
+spaceArt.shade=new('Frame',{Name='ReadabilityShade',Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(12,8,13),BackgroundTransparency=.64,BorderSizePixel=0,Active=false},spaceArt.group)
+new('UIGradient',{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.10),NumberSequenceKeypoint.new(.5,.20),NumberSequenceKeypoint.new(1,.02)})},spaceArt.shade)
+local starLayer=new('Frame',{Name='Starfield',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),ClipsDescendants=true,ZIndex=2,Active=false},surface)
+local stars={}; local random=Random.new(713)
+for i=1,140 do
+ local diameter=i%8==0 and 3.8 or random:NextNumber(1.8,3)
+ local dot=new('Frame',{Name='Star',BorderSizePixel=0,BackgroundTransparency=.25,Position=UDim2.fromScale(random:NextNumber(),random:NextNumber()),Size=UDim2.fromOffset(diameter,diameter),Active=false},starLayer)
+ round(dot,9); bind(dot,'BackgroundColor3',i%4==0 and 'secondary' or 'accent')
+ if i%7==0 then
+  local glow=new('ImageLabel',{Name='Glow',BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(14,14),Image='rbxassetid://6772783963',ImageTransparency=.35,Active=false},dot)
+  bind(glow,'ImageColor3',i%4==0 and 'secondary' or 'accent')
+ end
+ stars[i]={dot=dot,x=dot.Position.X.Scale,y=dot.Position.Y.Scale,speed=random:NextNumber(.009,.023),drift=random:NextNumber(.002,.007),phase=random:NextNumber(0,6.28)}
+end
+-- Microsoft Fluent Emoji 3D artwork (MIT), embedded from original PNGs.
+-- Full source links are listed in Halloween-ASSETS.txt.
+local halloweenLayer=new('Frame',{Name='HalloweenBackground',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Active=false,Visible=false},surface)
+local decorationImages={}
+local function decoration(parent,name,image,x,y,w,h,opacity,rotation)
+ local obj=new('ImageLabel',{Name=name,BackgroundTransparency=1,Image=image,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),ScaleType=Enum.ScaleType.Fit,ImageTransparency=opacity,Rotation=rotation or 0,Active=false},parent)
+ table.insert(decorationImages,obj)
+ return obj
+end
+local cornerWeb=decoration(halloweenLayer,'CornerCobweb',HALLOWEEN_IMAGES.web,1091,55,180,180,.48,18)
+cornerWeb.ImageColor3=Color3.fromRGB(196,168,232)
+local pumpkin=decoration(halloweenLayer,'JackOLantern',HALLOWEEN_IMAGES.pumpkin,925,84,112,112,.04,-8)
+local ghost=decoration(halloweenLayer,'LittleGhost',HALLOWEEN_IMAGES.ghost,1045,122,66,66,.1,8)
+local header=new('Frame',{Name='Header',BackgroundTransparency=1,Size=UDim2.fromOffset(1200,68)},surface)
+local brandLogo=new('ImageLabel',{Name='BrandLogo',BackgroundTransparency=1,Position=UDim2.fromOffset(15,7),Size=UDim2.fromOffset(54,54),Image=LOGO_IMAGE,ImageColor3=Color3.new(1,1,1),ScaleType=Enum.ScaleType.Fit,Visible=LOGO_IMAGE~=''},header)
+if LOGO_IMAGE~='' then table.insert(iconImages,brandLogo) end
+text(header,'·',62,0,16,68,20,muted)
+local brand=text(header,'F Y R E L I T H',91,0,250,68,19,Color3.fromRGB(185,197,216))
+local dragHandle=new('Frame',{Name='DragHandle',BackgroundTransparency=1,Active=true,Size=UDim2.fromOffset(590,68)},header)
+local searchBox=panel(header,'Search',620,14,440,40,'field',9)
+local _,_,searchParts=icon(searchBox,'Search',13,10,20,muted)
+local search=new('TextBox',{Name='SearchInput',Position=UDim2.fromOffset(44,0),Size=UDim2.new(1,-54,1,0),BackgroundTransparency=1,Text='',PlaceholderText='Search settings...',ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,TextColor3=white,PlaceholderColor3=muted,Font=Enum.Font.Gotham,TextSize=16},searchBox)
+local function control(parent,name,x,y,w,h,kind)
+ local b=new('TextButton',{Name=name,Text='',AutoButtonColor=false,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),BorderSizePixel=0},parent)
+ round(b,8); bind(b,'BackgroundColor3','field'); local s=stroke(b); bind(s,'Color','line')
+ if kind then icon(b,kind,(w-24)/2,(h-24)/2,24,Color3.fromRGB(203,213,230)) end
+ on(b.MouseEnter,function() local p=palette(); animate(b,{BackgroundColor3=p.field:Lerp(white,.07)}) end)
+ on(b.MouseLeave,function() local p=palette(); animate(b,{BackgroundColor3=p.field}) end)
+ return b
+end
+local minimize=control(header,'Minimize',1080,14,40,40,'Minimize')
+local close=control(header,'Close',1132,14,40,40,'Close')
+do
+ local dock=new('Frame',{Name='CommandDock',Position=UDim2.fromOffset(614,12),Size=UDim2.fromOffset(568,44),BackgroundColor3=Color3.fromRGB(10,12,19),BackgroundTransparency=.18,BorderSizePixel=0},header) round(dock,22)
+ local rim=stroke(dock,Color3.fromRGB(166,175,203),.65)
+ local rimLight=new('UIGradient',{Rotation=14,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(99,108,137)),ColorSequenceKeypoint.new(.45,Color3.fromRGB(214,213,239)),ColorSequenceKeypoint.new(.68,Color3.fromRGB(157,134,222)),ColorSequenceKeypoint.new(1,Color3.fromRGB(65,72,95))})},rim)
+ new('UIGradient',{Rotation=95,Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(183,183,183))},dock)
+ bind(dock,'BackgroundColor3',function(p,a) return p.bg:Lerp(a,.045) end)
+ bind(rim,'Color',function(p,a) return a:Lerp(white,.35) end)
+ local function syncRim()
+  local p,a=palette()
+  rimLight.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,p.line),ColorSequenceKeypoint.new(.45,a:Lerp(white,.6)),ColorSequenceKeypoint.new(.68,a),ColorSequenceKeypoint.new(1,p.line)})
+ end
+ syncRim()
+ on(dock:GetPropertyChangedSignal('BackgroundColor3'),syncRim)
+ searchBox.Parent=dock searchBox.Position=UDim2.fromOffset(6,4) searchBox.Size=UDim2.fromOffset(446,36) searchBox.BackgroundTransparency=.75
+ local old=searchBox:FindFirstChildOfClass('UIStroke') if old then old.Transparency=1 end
+ searchBox:FindFirstChildOfClass('UICorner').CornerRadius=UDim.new(0,18)
+ search.Position=UDim2.fromOffset(44,0) search.Size=UDim2.new(1,-90,1,0) search.Font=Enum.Font.GothamMedium search.TextSize=14
+ local searchIcon=searchBox:FindFirstChild('Icon_Search') if searchIcon then searchIcon.Position=UDim2.fromOffset(14,8) end
+ local focusLine=new('Frame',{Name='FocusLight',Position=UDim2.fromOffset(44,34),Size=UDim2.fromOffset(350,1),BackgroundColor3=Color3.fromRGB(185,166,255),BackgroundTransparency=.9,BorderSizePixel=0},searchBox)
+ new('UIGradient',{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.3,0),NumberSequenceKeypoint.new(.75,0),NumberSequenceKeypoint.new(1,1)})},focusLine)
+ local keycap=text(searchBox,'/',410,7,24,22,12,muted) keycap.Name='SearchShortcut' keycap.BackgroundColor3=Color3.fromRGB(37,41,56) keycap.BackgroundTransparency=.4 keycap.TextXAlignment=Enum.TextXAlignment.Center round(keycap,7)
+ bind(focusLine,'BackgroundColor3',function(p,a) return a end)
+ bind(keycap,'BackgroundColor3','field')
+ local function active(value)
+  local _,accent=palette()
+  animate(focusLine,{BackgroundTransparency=value and .12 or .9},.24)
+  if searchIcon then animate(searchIcon,{ImageColor3=value and accent:Lerp(white,.25) or muted},.24) end
+  animate(rim,{Transparency=value and .35 or .65},.24)
+ end
+ on(search.Focused,function() active(true) keycap.Visible=false end)
+ searchBox.Active=true
+ on(searchBox.InputBegan,function(input)
+  if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then search:CaptureFocus() end
+ end)
+ on(search.FocusLost,function() active(false) keycap.Visible=search.Text=='' end)
+ on(search:GetPropertyChangedSignal('Text'),function() keycap.Visible=not search:IsFocused() and search.Text=='' end)
+ on(searchBox.MouseEnter,function() if not search:IsFocused() then if searchIcon then animate(searchIcon,{ImageColor3=white},.2) end end end)
+ on(searchBox.MouseLeave,function() if not search:IsFocused() then if searchIcon then animate(searchIcon,{ImageColor3=muted},.2) end end end)
+ on(Input.InputBegan,function(input,processed)
+  if state.open and not processed and input.KeyCode==Enum.KeyCode.Slash and not Input:GetFocusedTextBox() then task.defer(function() if not dead and state.open then search:CaptureFocus() end end) end
+ end)
+ for i,b in ipairs({minimize,close}) do
+  b.Parent=dock b.Position=UDim2.fromOffset(i==1 and 462 or 514,4) b.Size=UDim2.fromOffset(42,36) b.BackgroundTransparency=.8
+  local corner=b:FindFirstChildOfClass('UICorner') if corner then corner.CornerRadius=UDim.new(0,14) end
+  local edge=b:FindFirstChildOfClass('UIStroke') if edge then edge.Transparency=1 end
+  local image=b:FindFirstChildOfClass('ImageLabel') if image then image.Position=UDim2.fromOffset(11,8) image.Size=UDim2.fromOffset(20,20) end
+  on(b.MouseEnter,function()
+   local p,a=palette()
+   animate(b,{BackgroundColor3=p.field:Lerp(a,.3),BackgroundTransparency=.26},.18)
+   if image then animate(image,{ImageColor3=a:Lerp(white,.65),Rotation=i==2 and 90 or 0},.24) end
+  end)
+  on(b.MouseLeave,function()
+   local p=palette() animate(b,{BackgroundColor3=p.field,BackgroundTransparency=.8},.22)
+   if image then animate(image,{ImageColor3=Color3.fromRGB(203,213,230),Rotation=0},.24) end
+  end)
+ end
+ for _,x in ipairs({456,508}) do new('Frame',{Position=UDim2.fromOffset(x,14),Size=UDim2.fromOffset(1,16),BackgroundColor3=muted,BackgroundTransparency=.85,BorderSizePixel=0},dock) end
+ local t=0
+ on(RunService.RenderStepped,function(dt)
+  if not state.open or state.reduce or not state.smooth then return end
+  t+=math.min(dt,.05) rimLight.Rotation=14+math.sin(t*.23)*12
+ end)
+end
+
+line(surface,0,68,1200)
+local sidebar=new('Frame',{Name='Sidebar',BackgroundTransparency=.18,BorderSizePixel=0,Position=UDim2.fromOffset(0,69),Size=UDim2.fromOffset(240,551)},surface); bind(sidebar,'BackgroundColor3','side')
+local sidebarDecor=new('Frame',{Name='HalloweenSidebar',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Active=false,Visible=false},sidebar)
+local sidebarPumpkin=decoration(sidebarDecor,'Pumpkin',HALLOWEEN_IMAGES.pumpkin,59,350,118,118,.05,8)
+local sidebarWeb=decoration(sidebarDecor,'Cobweb',HALLOWEEN_IMAGES.web,-65,328,156,156,.62,155)
+sidebarWeb.ImageColor3=Color3.fromRGB(191,151,225)
+local halloweenMoon=decoration(halloweenLayer,'CrescentMoon',HALLOWEEN_IMAGES.moon,839,102,66,66,.1,-18)
+local halloweenBat=decoration(halloweenLayer,'VelvetBat',HALLOWEEN_IMAGES.bat,1042,77,63,63,.06,-16)
+local sidebarBat=decoration(sidebarDecor,'LittleBat',HALLOWEEN_IMAGES.bat,24,355,51,51,.22,-15)
+local sidebarGhost=decoration(sidebarDecor,'LittleGhost',HALLOWEEN_IMAGES.ghost,156,385,48,48,.3,12)
+-- Ambient color is native UI shading, not another hosted image.
+local ambient=new('Frame',{Name='AutumnAmbient',BackgroundColor3=Color3.fromRGB(108,57,146),BackgroundTransparency=.88,BorderSizePixel=0,Position=UDim2.fromOffset(805,85),Size=UDim2.fromOffset(325,105)},halloweenLayer)
+round(ambient,52)
+new('UIGradient',{Rotation=12,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,.15),NumberSequenceKeypoint.new(1,1)})},ambient)
+ambient.ZIndex=0
+local divider=new('Frame',{BorderSizePixel=0,Position=UDim2.fromOffset(240,69),Size=UDim2.fromOffset(1,551)},surface); bind(divider,'BackgroundColor3','line')
+local navIndicator=new('Frame',{Name='CategoryIndicator',BackgroundTransparency=1,Position=UDim2.fromOffset(10,274),Size=UDim2.fromOffset(220,38),Active=false},sidebar)
+local navIndicatorFill=panel(navIndicator,'Fill',0,0,220,38,'field',9)
+navIndicatorFill.BackgroundTransparency=.06
+new('UIGradient',{Rotation=0,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(246,250,255)),ColorSequenceKeypoint.new(.45,Color3.fromRGB(220,228,241)),ColorSequenceKeypoint.new(1,Color3.fromRGB(173,183,202))})},navIndicatorFill)
+do
+ for i,width in ipairs({7,3})do
+  local halo=new('Frame',{Name='SoftSelectionGlow',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Active=false},navIndicator)
+  round(halo,10)
+  local edge=stroke(halo,nil,i==1 and .97 or .91);edge.Thickness=width
+  bind(edge,'Color','accent')
+ end
+ -- A narrow inner reflection gives the selection a soft raised edge.
+ local shine=new('Frame',{BackgroundTransparency=1,Position=UDim2.fromOffset(1,1),Size=UDim2.new(1,-2,1,-2),Active=false},navIndicator)
+ round(shine,9)
+ local edge=stroke(shine,Color3.fromRGB(208,222,245),.75)
+ new('UIGradient',{Rotation=120,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.15),NumberSequenceKeypoint.new(.5,.8),NumberSequenceKeypoint.new(1,1)})},edge)
+end
+local navIndicatorBar=new('Frame',{Position=UDim2.fromOffset(1,8),Size=UDim2.new(0,2,1,-16),BorderSizePixel=0},navIndicator)
+round(navIndicatorBar,99)
+new('UIGradient',{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.7),NumberSequenceKeypoint.new(.15,.08),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(.85,.08),NumberSequenceKeypoint.new(1,.7)})},navIndicatorBar)
+bind(navIndicatorBar,'BackgroundColor3','accent')
+local indicatorPage='Settings'
+local navs={}
+for i,name in ipairs({'Overview','Main','Summon','Auto Play','Event','Macro','Dungeon','Misc','Webhook','Settings'}) do
+ local b=new('TextButton',{Name=name,Text='',AutoButtonColor=false,BackgroundTransparency=1,Position=UDim2.fromOffset(10,12+(i-1)*42),Size=UDim2.fromOffset(220,38),BorderSizePixel=0},sidebar); round(b,9)
+ local s=stroke(b); s.Transparency=1; bind(s,'Color','line')
+ local bar=new('Frame',{Position=UDim2.fromOffset(0,0),Size=UDim2.new(0,3,1,0),BorderSizePixel=0,Visible=false},b); bind(bar,'BackgroundColor3','accent')
+ local _,setIcon=icon(b,({Summon='Star',['Auto Play']='Play',Event='Calendar',Macro='MacroCode',Dungeon='Map',Misc='Utilities',Webhook='Send'})[name] or name,22,8,22,muted)
+ local title=text(b,name=='Overview' and 'Home' or name,58,0,152,38,16,muted,false)
+ navs[name]={button=b,title=title,icon=setIcon,bar=bar,stroke=s,hover=false}
+end
+line(sidebar,0,468,240)
+local avatar=panel(sidebar,'Avatar',20,484,50,50,'field',9)
+local avatarImage=new('ImageLabel',{Name='Headshot',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Image='rbxthumb://type=AvatarHeadShot&id='..player.UserId..'&w=150&h=150'},avatar); round(avatarImage,8)
+local online=new('Frame',{BackgroundColor3=Color3.fromRGB(82,211,133),BorderSizePixel=0,Position=UDim2.fromOffset(62,524),Size=UDim2.fromOffset(11,11)},sidebar); round(online,9); stroke(online,Color3.fromRGB(19,24,32),0)
+local profileName=text(sidebar,player.DisplayName,85,487,130,24,14,white,true)
+local profileHandle=text(sidebar,'@'..player.Name,85,511,130,21,11,muted)
+local body=new('Frame',{Name='Body',BackgroundTransparency=1,Position=UDim2.fromOffset(266,92),Size=UDim2.fromOffset(908,507)},surface)
+local heading=text(body,'Settings',10,0,860,45,36,white,true)
+local subtitle=text(body,'Make it feel like yours.',10,48,860,29,18,muted)
+local pages={}
+local function page(name)
+ local obj=new('ScrollingFrame',{Name=name,BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.fromOffset(0,66),Size=UDim2.fromOffset(908,441),Visible=false,CanvasSize=UDim2.fromOffset(0,0),ScrollBarThickness=3,ScrollBarImageColor3=muted,ClipsDescendants=true},body); pages[name]=obj; return obj
+end
+for _,name in ipairs({'Summon','Auto Play','Event','Macro','Dungeon','Misc','Webhook'}) do page(name) end
+local settings=page('Settings')
+settings.Active=true
+settings.AutomaticCanvasSize=Enum.AutomaticSize.Y
+settings.ScrollingDirection=Enum.ScrollingDirection.Y
+local appearance=panel(settings,'Appearance',3,3,439,407,'card',10)
+local interface=panel(settings,'Interface',459,3,430,407,'card',10)
+appearance.BackgroundTransparency=.16; interface.BackgroundTransparency=.16
+local _,_,appearanceParts=icon(appearance,'Appearance',23,23,30)
+local _,_,interfaceParts=icon(interface,'Interface',23,23,30)
+for _,parts in ipairs({appearanceParts,interfaceParts}) do for _,part in ipairs(parts) do bind(part,'ImageColor3','accent') end end
+text(appearance,'Appearance',74,17,345,30,20,white,true)
+text(appearance,'Customize the look and feel of the interface.',74,49,345,25,12,muted)
+text(interface,'Interface',72,17,350,30,20,white,true)
+text(interface,'Fine-tune interface behavior and preferences.',72,49,350,25,12,muted)
+line(appearance,23,88,396); line(interface,23,88,400)
+local searchable={}
+local descriptions={}
+local function description(parent,value,x,y,w)
+ local obj=text(parent,value,x,y,w,23,12,muted); table.insert(descriptions,obj); return obj
+end
+local function register(name,obj,desc) table.insert(searchable,{name=string.lower(name),obj=obj,desc=desc}) end
+local themeRow=new('Frame',{Name='ThemeRow',BackgroundTransparency=1,Position=UDim2.fromOffset(23,102),Size=UDim2.fromOffset(396,65)},appearance)
+text(themeRow,'Theme',0,3,190,25,16,white,true)
+description(themeRow,'Choose your atmosphere.',0,30,190)
+local themeButton=control(themeRow,'ThemePicker',196,5,200,40)
+local themeText=text(themeButton,state.theme=='Space' and 'Rose Eclipse' or state.theme,13,0,156,40,14)
+icon(themeButton,'Chevron',176,12,16,muted)
+register('theme atmosphere rose eclipse event horizon nebula violet stardust blue standard halloween',themeRow)
+line(appearance,23,169,396)
+local accentRow=new('Frame',{Name='AccentRow',BackgroundTransparency=1,Position=UDim2.fromOffset(23,182),Size=UDim2.fromOffset(396,105)},appearance)
+text(accentRow,'Accent color',0,0,300,25,16,white,true)
+description(accentRow,'Select the accent color used across the UI.',0,27,396)
+local swatchButtons={}
+for i=1,7 do
+ local b=new('TextButton',{Name='Swatch'..i,Text='',AutoButtonColor=false,Position=UDim2.fromOffset((i-1)*49,60),Size=UDim2.fromOffset(34,34),BorderSizePixel=0},accentRow); round(b,7)
+ if i==1 then bind(b,'BackgroundColor3',function(p) return themes[state.theme].accent end) else b.BackgroundColor3=swatches[i] end
+ local ring=stroke(b); ring.Thickness=2; bind(ring,'Color','accent')
+ local inset=new('UIPadding',{PaddingTop=UDim.new(0,0)},b)
+ swatchButtons[i]={button=b,ring=ring}
+end
+register('accent color',accentRow)
+line(appearance,23,294,396)
+local scaleRow=new('Frame',{Name='ScaleRow',BackgroundTransparency=1,Position=UDim2.fromOffset(23,306),Size=UDim2.fromOffset(396,80)},appearance)
+text(scaleRow,'UI scale',0,0,300,25,16,white,true)
+description(scaleRow,'Adjust the size of interface elements.',0,26,396)
+local sliderHit=new('TextButton',{Name='ScaleSlider',Text='',AutoButtonColor=false,BackgroundTransparency=1,Position=UDim2.fromOffset(0,53),Size=UDim2.fromOffset(304,25)},scaleRow)
+local sliderTrack=new('Frame',{BorderSizePixel=0,Position=UDim2.fromOffset(0,10),Size=UDim2.fromOffset(304,6)},sliderHit); round(sliderTrack,8); bind(sliderTrack,'BackgroundColor3','line')
+local sliderFill=new('Frame',{BorderSizePixel=0,Size=UDim2.fromScale(.714,1)},sliderTrack); round(sliderFill,8); bind(sliderFill,'BackgroundColor3','accent')
+local sliderKnob=new('Frame',{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.714,.5),Size=UDim2.fromOffset(20,20),BorderSizePixel=0},sliderTrack); round(sliderKnob,99); bind(sliderKnob,'BackgroundColor3','accent')
+local scaleField=panel(scaleRow,'ScaleValue',326,53,70,27,'field',6)
+local scaleLabel=text(scaleField,'100%',0,0,70,27,14); scaleLabel.TextXAlignment=Enum.TextXAlignment.Center
+register('ui scale size',scaleRow)
+local toggles={}
+local interfaceScroll=new('ScrollingFrame',{Name='Controls',BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.fromOffset(23,102),Size=UDim2.fromOffset(400,214),CanvasSize=UDim2.fromOffset(0,542),ScrollBarThickness=3,ScrollBarImageColor3=muted,ClipsDescendants=true,ScrollingDirection=Enum.ScrollingDirection.Y},interface)
+local function toggle(name,title,desc,y,key)
+ local row=new('Frame',{Name=name,BackgroundTransparency=1,Position=UDim2.fromOffset(0,y),Size=UDim2.fromOffset(390,65)},interfaceScroll)
+ text(row,title,0,0,304,25,16,white,true)
+ description(row,desc,0,28,325)
+ local b=new('TextButton',{Name='Toggle',Text='',AutoButtonColor=false,Position=UDim2.fromOffset(334,6),Size=UDim2.fromOffset(56,29),BorderSizePixel=0},row); round(b,99)
+ local s=stroke(b); s.Transparency=.4
+ local k=new('Frame',{Name='Knob',BorderSizePixel=0,BackgroundColor3=white,Position=UDim2.fromOffset(30,3),Size=UDim2.fromOffset(23,23)},b); round(k,99)
+ toggles[key]={button=b,knob=k,stroke=s,row=row}
+ register(title..' '..desc,row)
+ return b
+end
+local smoothButton=toggle('SmoothAnimations','Smooth animations','Enable smooth transitions and animations.',156,'smooth')
+line(interfaceScroll,0,72,390)
+local reduceButton=toggle('ReduceMotion','Reduce motion','Minimize motion for a calmer experience.',234,'reduce')
+line(interfaceScroll,0,150,390)
+local tipsButton=toggle('ShowTooltips','Show tooltips','Show helpful descriptions when hovering.',312,'tips')
+line(interfaceScroll,0,228,390)
+local particleButton=toggle('StarParticles','Star particles','Show floating particles inside the window.',0,'stars')
+line(interfaceScroll,0,306,390)
+local hotkeyRow=new('Frame',{Name='WindowHotkey',BackgroundTransparency=1,Position=UDim2.fromOffset(0,78),Size=UDim2.fromOffset(390,65)},interfaceScroll)
+text(hotkeyRow,'Minimize hotkey',0,0,225,25,16,white,true)
+description(hotkeyRow,'Click to rebind. Esc cancels.',0,28,225)
+local hotkeyButton=control(hotkeyRow,'BindKey',242,4,148,36)
+local hotkeyText=text(hotkeyButton,keyName(hotkey),5,0,138,36,13)
+hotkeyText.TextXAlignment=Enum.TextXAlignment.Center
+register('minimize hotkey keyboard shortcut keybind',hotkeyRow)
+line(interfaceScroll,0,384,390)
+local iconButton=toggle('ShowFloatingIcon','Show floating icon','Show the restore button while minimized.',390,'showIcon')
+line(interfaceScroll,0,462,390)
+toggle('AnimatedBorder','Animated border','Theme-colored light around the window.',468,'border')
+text(interface,'Scroll for motion and tooltip preferences',23,320,400,18,10,muted)
+local save=new('TextButton',{Name='SavePreferences',Text='',AutoButtonColor=false,Position=UDim2.fromOffset(23,346),Size=UDim2.fromOffset(400,44),BorderSizePixel=0},interface); round(save,8)
+bind(save,'BackgroundColor3','accent')
+new('UIGradient',{Rotation=90,Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(209,226,255))},save)
+icon(save,'Save',92,12,21,Color3.fromRGB(10,22,39))
+local saveText=text(save,'Save preferences',126,0,248,44,16,Color3.fromRGB(10,22,39),true)
+-- Floating menus are outside the content cards, so they cannot be clipped.
+local menu=new('CanvasGroup',{Name='ThemeMenu',Position=UDim2.new(),Size=UDim2.fromOffset(228,276),GroupTransparency=1,Visible=false,ClipsDescendants=false,ZIndex=20,BorderSizePixel=0},surface)
+round(menu,9);menu.BackgroundTransparency=1
+-- Keep the border inside the fading group so it cannot linger on its own.
+do local backing=panel(menu,'Surface',3,3,222,270,'field',8);backing.ZIndex=20;backing:FindFirstChildOfClass('UIStroke').Thickness=1.5 end
+local dropdown={open=false,revision=0,tween=nil,position=UDim2.new()}
+function dropdown.place()
+ local x=(themeButton.AbsolutePosition.X-surface.AbsolutePosition.X)/uiScale.Scale-34
+ local y=(themeButton.AbsolutePosition.Y-surface.AbsolutePosition.Y)/uiScale.Scale+46
+ if y+276>1040-12 then y=(themeButton.AbsolutePosition.Y-surface.AbsolutePosition.Y)/uiScale.Scale-282 end
+ dropdown.position=UDim2.fromOffset(math.clamp(x,8,724),y)
+end
+function dropdown.set(value,instant)
+ dropdown.revision+=1;local revision=dropdown.revision
+ dropdown.open=value
+ if dropdown.tween then dropdown.tween:Cancel();dropdown.tween=nil end
+ dropdown.place()
+ local duration=not instant and state.smooth and not state.reduce and .22 or 0
+ local arrow=themeButton:FindFirstChild('Icon_Chevron')
+ if arrow then animate(arrow,{Rotation=value and 180 or 0},duration) end
+ -- Keep the render target at its final dimensions: no resizing text or corners.
+ menu.Size=UDim2.fromOffset(228,276)
+ if value and not menu.Visible then
+  menu.GroupTransparency=1
+  menu.Position=dropdown.position-UDim2.fromOffset(0,7)
+ end
+ if value then menu.Visible=true end
+ local goal={GroupTransparency=value and 0 or 1,Position=value and dropdown.position or dropdown.position-UDim2.fromOffset(0,5)}
+ if duration==0 or not menu.Visible then
+  for k,v in pairs(goal)do menu[k]=v end
+  menu.Visible=value
+ else
+  dropdown.tween=TweenService:Create(menu,TweenInfo.new(duration,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),goal)
+  dropdown.tween.Completed:Once(function(playback)
+   if dead or revision~=dropdown.revision or playback~=Enum.PlaybackState.Completed then return end
+   if not dropdown.open then menu.Visible=false end
+   dropdown.tween=nil
+  end)
+  dropdown.tween:Play()
+ end
+end
+
+local menuItems={}
+for i,name in ipairs({'Space','Event Horizon','Nebula Violet','Stardust Blue','Standard','Halloween'}) do
+ local b=new('TextButton',{Name=name,Text=name=='Space' and 'Rose Eclipse' or name,Font=Enum.Font.GothamMedium,TextSize=16,TextXAlignment=Enum.TextXAlignment.Left,TextColor3=white,BackgroundTransparency=1,AutoButtonColor=false,Position=UDim2.fromOffset(8,8+(i-1)*44),Size=UDim2.fromOffset(212,40),ZIndex=21},menu); round(b,6)
+ new('UIPadding',{PaddingLeft=UDim.new(0,12)},b); menuItems[name]=b
+end
+local function extraPage(name,title,subtitleText)
+ local p=page(name)
+ local c=panel(p,name..'Card',0,0,908,260,'card',10); c.BackgroundTransparency=.15
+ local _,_,parts=icon(c,name,28,28,32)
+ for _,part in ipairs(parts) do bind(part,'ImageColor3','accent') end
+ text(c,title,82,24,780,36,24,white,true)
+ text(c,subtitleText,28,91,850,34,16,muted)
+ line(c,28,146,850)
+ return c
+end
+local overview=page('Overview')
+local shortcutHint=text(overview,keyName(hotkey)..' to hide or show  ·  Drag the top bar to move',8,402,892,18,10,muted)
+do
+ local identity=panel(overview,'PlayerProfile',8,8,892,88,'card',10)
+ identity.BackgroundTransparency=.12
+ local avatarBox=panel(identity,'Portrait',14,9,70,70,'field',10)
+ local portrait=new('ImageLabel',{Name='Image',BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Image='rbxthumb://type=AvatarHeadShot&id='..player.UserId..'&w=180&h=180'},avatarBox)
+ round(portrait,9)
+ text(identity,player.DisplayName,104,12,280,30,20,white,true)
+ text(identity,'@'..player.Name,104,44,280,24,13,muted)
+ text(identity,'USER ID',416,17,190,18,10,muted,true)
+ text(identity,tostring(player.UserId),416,40,190,27,15,white)
+ new('Frame',{Position=UDim2.fromOffset(393,22),Size=UDim2.fromOffset(1,44),BackgroundColor3=muted,BackgroundTransparency=.7,BorderSizePixel=0},identity)
+ new('Frame',{Position=UDim2.fromOffset(641,22),Size=UDim2.fromOffset(1,44),BackgroundColor3=muted,BackgroundTransparency=.7,BorderSizePixel=0},identity)
+ local _,_,parts=icon(identity,'Player',668,30,26,muted)
+ for _,part in ipairs(parts)do bind(part,'ImageColor3','accent')end
+ text(identity,'CHARACTER',710,17,180,18,10,muted,true)
+ local characterStatus=text(identity,'Ready',710,40,180,27,14,Color3.fromRGB(99,220,160))
+ local function updateCharacter(character)
+  characterStatus.Text=character and 'Spawned' or 'Respawning'
+  characterStatus.TextColor3=character and Color3.fromRGB(99,220,160) or muted
+  portrait.Image='rbxthumb://type=AvatarHeadShot&id='..player.UserId..'&w=180&h=180'
+ end
+ updateCharacter(player.Character)
+ on(player.CharacterAdded,updateCharacter)
+ on(player.CharacterRemoving,function()updateCharacter(nil)end)
+
+ local map=panel(overview,'CurrentMap',8,112,624,278,'card',10)
+ map.BackgroundTransparency=.12
+ text(map,'Current Map',18,10,590,28,16,white,true)
+ local thumbnailMask=new('CanvasGroup',{Name='Thumbnail',Position=UDim2.fromOffset(16,48),Size=UDim2.fromOffset(592,158),BackgroundColor3=Color3.fromRGB(12,16,24),BorderSizePixel=0,ClipsDescendants=true},map)
+ round(thumbnailMask,9)
+ local fallback=text(thumbnailMask,'Loading experience image…',16,60,566,34,13,muted)
+ fallback.TextXAlignment=Enum.TextXAlignment.Center
+ local mapImage=new('ImageLabel',{Name='Image',Image='rbxthumb://type=GameThumbnail&id='..game.PlaceId..'&w=768&h=432',Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Crop},thumbnailMask)
+ local mapName=text(map,'Loading experience…',18,213,412,27,18,white,true)
+ mapName.Name='ExperienceName'
+ text(map,'Current experience',18,244,400,18,12,muted)
+ text(map,'PLACE ID',451,216,160,16,9,muted,true)
+ text(map,tostring(game.PlaceId),451,238,160,23,12,white)
+ task.spawn(function()
+  -- A world/server is a Place; the parent experience is identified by GameId.
+  -- Resolve the parent rather than showing a sub-place's title.
+  local universeId=game.GameId
+  local cacheKey='ExperienceName_'..tostring(universeId)
+  local rootKey='ExperienceRoot_'..tostring(universeId)
+  local cached=store:GetAttribute(cacheKey)
+  if type(cached)=='string' and cached~='' then mapName.Text=cached end
+  local function readExperience()
+   local url='https://games.roblox.com/v1/games?universeIds='..tostring(universeId)
+   local ok,body=pcall(function()return game:HttpGet(url)end)
+   if not ok then
+    local send=request or http_request
+    if type(send)~='function' and type(syn)=='table' then send=syn.request end
+    if type(send)~='function' then error('Experience metadata request unavailable')end
+    local response=send({Url=url,Method='GET'})
+    assert(response and response.StatusCode==200,'Experience metadata request failed')
+    body=response.Body
+   end
+   local decoded=game:GetService('HttpService'):JSONDecode(body)
+   local entry=decoded.data and decoded.data[1]
+   assert(entry and tonumber(entry.id)==universeId and type(entry.name)=='string' and entry.name~='','Invalid experience metadata')
+   return entry.name,tonumber(entry.rootPlaceId) or (type(entry.rootPlace)=='table' and tonumber(entry.rootPlace.id))
+  end
+  local ok,name,rootPlace=pcall(readExperience)
+  if dead then return end
+  if ok then
+   mapName.Text=name
+   store:SetAttribute(cacheKey,name)
+   if rootPlace and rootPlace>0 then store:SetAttribute(rootKey,rootPlace)end
+  elseif type(cached)=='string' and cached~='' then
+   mapName.Text=cached
+  else
+   -- Never substitute a world title for the parent game's title.
+   mapName.Text='Experience '..tostring(universeId)
+  end
+  local rootId=rootPlace or store:GetAttribute(rootKey)
+  if type(rootId)=='number' and rootId>0 then
+   mapImage.Image='rbxthumb://type=GameThumbnail&id='..rootId..'&w=768&h=432'
+  end
+  map:SetAttribute('UniverseId',universeId)
+  map:SetAttribute('RootPlaceId',rootId)
+ end)
+
+ task.spawn(function()
+  local started=os.clock()
+  while not dead and not mapImage.IsLoaded and os.clock()-started<8 do task.wait(.2)end
+  if dead then return end
+  if not mapImage.IsLoaded then
+   mapImage.Image='rbxthumb://type=GameIcon&id='..game.GameId..'&w=512&h=512'
+   fallback.Text='Experience thumbnail unavailable'
+  end
+ end)
+
+ for i,info in ipairs({{'FPSCard','FPS',7733799969},{'PingCard','PING',8997387546}})do
+  local stat=panel(overview,info[1],648,112+(i-1)*147,252,131,'card',10)
+  stat.BackgroundTransparency=.10
+  local disc=panel(stat,'Badge',18,15,40,40,'field',20)
+  local image=new('ImageLabel',{Image='rbxassetid://'..info[3],Size=UDim2.fromOffset(24,24),Position=UDim2.fromOffset(8,8),BackgroundTransparency=1},disc)
+  bind(image,'ImageColor3','accent');table.insert(iconImages,image)
+  text(stat,info[2],72,19,165,28,13,muted,true)
+  local value=text(stat,'—',20,58,219,43,32,white,true);value.Name='Value'
+  local dot=new('Frame',{Name='StatusDot',Position=UDim2.fromOffset(21,112),Size=UDim2.fromOffset(7,7),BackgroundColor3=muted,BorderSizePixel=0},stat);round(dot,9)
+  local status=text(stat,'Measuring…',36,102,199,25,12,muted);status.Name='Status'
+ end
+end
+
+local mainPage=page('Main')
+local visuals=page('Visuals')
+local utilities=page('Utilities')
+local resetButton=control(interfaceScroll,'ResetPreferences',0,550,390,40);interfaceScroll.CanvasSize=UDim2.fromOffset(0,604)
+text(resetButton,'Reset settings',16,0,358,40,15)
+local toast=panel(surface,'Toast',836,565,337,38,'field',8); toast.Visible=false; toast.ZIndex=30
+local toastText=text(toast,'Preferences saved for this session.',14,0,310,38,12); toastText.ZIndex=31
+local toastId=0
+local function notify(message)
+ toastId+=1; local id=toastId; toastText.Text=message; toast.Visible=true
+ task.delay(3,function() if not dead and id==toastId then toast.Visible=false end end)
+end
+local viewport=Vector2.zero
+-- Preserve the same horizontal, two-column composition on every display.
+-- The desktop size is capped; smaller viewports proportionally scale to fit.
+local function fit()
+ local camera=workspace.CurrentCamera
+ if not camera then return end
+ viewport=camera.ViewportSize
+ local topInset,bottomInset=game:GetService('GuiService'):GetGuiInset()
+ local safe=viewport-topInset-bottomInset
+ local preferredWidth=math.min(960,safe.X*.94)
+ local baseScale=math.min(preferredWidth/960,safe.Y*.92/1040)
+ local fitScale=math.min(math.max(1,safe.X-28)/960,math.max(1,safe.Y-28)/1040)
+ local mobile=game:GetService('UserInputService').TouchEnabled
+ local target=baseScale*state.scale/100
+ local height=1040
+ if mobile then
+  -- Increase control size while shortening the scroll viewport to fit vertically.
+  target=math.max(.01,math.min(target,math.max(1,safe.Y-28)/480,math.max(1,safe.X-28)/960))
+  height=math.clamp(math.max(1,safe.Y-28)/target,480,1040)
+ end
+ uiScale.Scale=mobile and target or math.min(target,fitScale)
+ root.Size=UDim2.fromOffset(960,height)
+ canvas.Size=UDim2.fromOffset(960,height)
+ surface.Size=UDim2.fromOffset(960,height)
+ local crisp=canvas:FindFirstChild('CrispContent')
+ if crisp then crisp.Size=UDim2.fromOffset(960,height)end
+ body.Size=UDim2.fromOffset(908,math.max(100,height-body.Position.Y.Offset-16))
+ for _,p in pairs(pages)do
+  p.Size=UDim2.fromOffset(908,math.max(80,body.Size.Y.Offset-p.Position.Y.Offset))
+  p.ScrollingEnabled=true
+  p.Active=true
+ end
+ for _,p in pairs(pages) do p.ClipsDescendants=true end
+ if dropdown.open then dropdown.set(false,true) end
+end
+local function refreshNav()
+ local p,a=palette()
+ local destination=navs[state.page]
+ if destination and destination.button.Parent==navIndicator.Parent and indicatorPage~=state.page then
+  indicatorPage=state.page
+  animate(navIndicator,{Position=destination.button.Position},.26)
+ end
+ navIndicator.Visible=destination~=nil and destination.button.Parent==navIndicator.Parent;navIndicatorFill.BackgroundColor3=p.field:Lerp(a,.26)
+ for name,n in pairs(navs) do
+  local selected=name==state.page
+  animate(n.button,{BackgroundColor3=p.field,BackgroundTransparency=not selected and n.hover and .6 or 1},.15)
+  animate(n.title,{TextColor3=selected and white or muted},.18)
+  n.title.Font=selected and Enum.Font.GothamMedium or Enum.Font.Gotham
+  n.icon(selected and a or Color3.fromRGB(196,207,224))
+  n.bar.Visible=false;n.stroke.Transparency=selected and .25 or .65
+ end
+end
+local function refreshToggles()
+ for key,value in pairs({Smooth=state.smooth,ReduceMotion=state.reduce,Tooltips=state.tips,Stars=state.stars,ShowIcon=state.showIcon,AnimatedBorder=state.border}) do store:SetAttribute(key,value) end
+ local p,a=palette()
+ for key,t in pairs(toggles) do
+  animate(t.button,{BackgroundColor3=state[key] and a or p.field})
+  animate(t.knob,{Position=UDim2.fromOffset(state[key] and 30 or 3,3)})
+  t.stroke.Color=state[key] and a or muted
+ end
+end
+local function refresh()
+ for key,value in pairs({Theme=state.theme,Accent=state.accent,Scale=state.scale,Smooth=state.smooth,ReduceMotion=state.reduce,Tooltips=state.tips,Stars=state.stars,ShowIcon=state.showIcon,AnimatedBorder=state.border,Hotkey=hotkey.Name}) do store:SetAttribute(key,value) end
+ local p,a=palette()
+ -- Publish a complete palette atomically, rather than sampling animated controls.
+ for _,role in ipairs({'card','field','line'})do gui:SetAttribute('Palette_'..role,p[role])end
+ gui:SetAttribute('Palette_accent',a)
+ gui:SetAttribute('PaletteRevision',(gui:GetAttribute('PaletteRevision')or 0)+1)
+ for _,scroll in ipairs(gui:QueryDescendants('ScrollingFrame'))do scroll.ScrollBarImageColor3=a end
+ for _,b in ipairs(bindings) do
+  if activeTweens[b.obj] then activeTweens[b.obj]:Cancel();activeTweens[b.obj]=nil end
+  b.obj[b.property]=type(b.role)=='function' and b.role(p,a) or (b.role=='accent' and a or p[b.role])
+ end
+ -- Swatch 1 always previews the theme's default accent.
+ swatchButtons[1].button.BackgroundColor3=themes[state.theme].accent
+ for i,s in ipairs(swatchButtons) do s.ring.Transparency=i==state.accent and 0 or 1 end
+ themeText.Text=state.theme=='Space' and 'Rose Eclipse' or state.theme
+ spaceArt.image.ImageColor3=a:Lerp(white,.2);if spaceArt.applyHeader then spaceArt.applyHeader(state.theme)end
+ brand.TextColor3=a:Lerp(white,.70)
+ local signature=header:FindFirstChild('RoseSignature')
+ if signature then signature.TextColor3=a:Lerp(white,.5)end
+ spaceArt.group.Visible=(state.theme=='Space' or state.theme=='Event Horizon' or state.theme=='Nebula Violet' or state.theme=='Stardust Blue')
+ appearance.BackgroundTransparency=state.theme=='Standard' and 0 or ((state.theme=='Space' or state.theme=='Event Horizon' or state.theme=='Nebula Violet' or state.theme=='Stardust Blue') and .06 or .10)
+ interface.BackgroundTransparency=state.theme=='Standard' and 0 or ((state.theme=='Space' or state.theme=='Event Horizon' or state.theme=='Nebula Violet' or state.theme=='Stardust Blue') and .06 or .10)
+ sidebar.BackgroundTransparency=state.theme=='Standard' and 0 or ((state.theme=='Space' or state.theme=='Event Horizon' or state.theme=='Nebula Violet' or state.theme=='Stardust Blue') and .02 or .08)
+ starLayer.Visible=state.stars
+ if launcher then launcher.Visible=not state.open and state.showIcon end
+ halloweenLayer.Visible=state.theme=='Halloween'
+ sidebarDecor.Visible=state.theme=='Halloween'
+ refreshNav(); refreshToggles()
+ local alpha=(state.scale-75)/(scaleMaximum-75)
+ sliderFill.Size=UDim2.fromScale(alpha,1); sliderKnob.Position=UDim2.fromScale(alpha,.5)
+ scaleLabel.Text=tostring(state.scale)..'%'
+ fit()
+end
+local subtitles={Settings='Make it feel like yours.',Overview='Your session, at a glance.',Main='Add your own controls here.',Visuals='Customize your visual controls.',Utilities='Add your own tools here.'}
+local function selectPage(name)
+ capturingKey=false; hotkeyText.Text=keyName(hotkey)
+ dropdown.set(false,true); state.page=name
+ if name=='Event' then
+  local eventPage=pages[name]
+  local navigation=game:GetService('GuiService')
+  local selected=navigation.SelectedObject
+  if selected and selected:IsDescendantOf(eventPage) then navigation.SelectedObject=nil end
+  eventPage.CanvasPosition=Vector2.zero
+  task.defer(function()if state.page=='Event' then eventPage.CanvasPosition=Vector2.zero end end)
+ end
+ for key,p in pairs(pages) do p.Visible=key==name end
+ heading.Text=name=='Overview' and 'Home' or name=='Event'and'Summer'or name;heading.Visible=name~='Auto Play';subtitle.Text='';subtitle.Visible=false;pages[name].Position=UDim2.fromOffset(0,name=='Auto Play'and 0 or 66)
+ search.PlaceholderText=name=='Settings' and 'Search settings...' or 'Search pages...'
+ search.Text=''
+ refreshNav()
+ if state.smooth and not state.reduce then
+  pages[name].Position=UDim2.fromOffset(8,name=='Auto Play'and 0 or 66)
+  animate(pages[name],{Position=UDim2.fromOffset(0,name=='Auto Play'and 0 or 66)},.25)
+ end
+end
+for name,n in pairs(navs) do
+ on(n.button.Activated,function() selectPage(name) end)
+ on(n.button.MouseEnter,function() n.hover=true; refreshNav() end)
+ on(n.button.MouseLeave,function() n.hover=false; refreshNav() end)
+end
+for i,s in ipairs(swatchButtons) do on(s.button.Activated,function() state.accent=i; refresh() end) end
+for name,b in pairs(menuItems) do
+ on(b.Activated,function() state.theme=name; state.accent=1; dropdown.set(false); refresh() end)
+ on(b.MouseEnter,function() b.BackgroundTransparency=.3; local p=palette(); b.BackgroundColor3=p.card end)
+ on(b.MouseLeave,function() b.BackgroundTransparency=1 end)
+end
+on(themeButton.Activated,function()
+ dropdown.set(not dropdown.open)
+end)
+for key,t in pairs(toggles) do
+ on(t.button.Activated,function()
+  state[key]=not state[key]
+  if key=='stars' then starLayer.Visible=state.stars end
+  if key=='showIcon' and launcher then launcher.Visible=not state.open and state.showIcon end
+  refreshToggles()
+ end)
+end
+
+on(resetButton.Activated,function()
+ state.theme='Standard'; state.accent=1; state.scale=100; state.smooth=true; state.reduce=false; state.tips=true; state.stars=true; state.showIcon=true; state.border=true
+ hotkey=Enum.KeyCode.RightShift; capturingKey=false
+ hotkeyText.Text=keyName(hotkey)
+ shortcutHint.Text=keyName(hotkey)..' to hide or show  ·  Drag the top bar to move'
+ refresh(); root.Position=UDim2.fromScale(.5,.5); notify('Appearance settings reset.')
+end)
+on(save.Activated,function()
+ for key,value in pairs({Theme=state.theme,Accent=state.accent,Scale=state.scale,Smooth=state.smooth,ReduceMotion=state.reduce,Tooltips=state.tips,Stars=state.stars,ShowIcon=state.showIcon,AnimatedBorder=state.border,Hotkey=hotkey.Name}) do store:SetAttribute(key,value) end
+ saveText.Text='Preferences saved'
+ notify('Preferences saved for this session.')
+ task.delay(1.8,function() if not dead then saveText.Text='Save preferences' end end)
+end)
+on(save.MouseEnter,function() local _,a=palette(); animate(save,{BackgroundColor3=a:Lerp(white,.12)}) end)
+on(save.MouseLeave,function() local _,a=palette(); animate(save,{BackgroundColor3=a}) end)
+do
+local slideInput,dragInput,dragStart,startPosition
+local dragTarget=Vector2.zero
+local dragSettling=false
+local dragViewport=gui.AbsoluteSize
+local function windowCenter()
+ local size=gui.AbsoluteSize
+ return Vector2.new(root.Position.X.Scale*size.X+root.Position.X.Offset,root.Position.Y.Scale*size.Y+root.Position.Y.Offset)
+end
+local function clampPosition(pos)
+ local half=root.AbsoluteSize/2
+ local size=gui.AbsoluteSize
+ if scaleMaximum>110 and (half.X*2>size.X or half.Y*2>size.Y)then
+  -- Let a touch user reach either side of an oversized window.
+  local function axis(value,extent,screen)
+   if extent*2>screen then return math.clamp(value,screen-extent-14,extent+14)end
+   return math.clamp(value,extent,math.max(extent,screen-extent))
+  end
+  return Vector2.new(axis(pos.X,half.X,size.X),axis(pos.Y,half.Y,size.Y))
+ end
+ local x=math.clamp(pos.X,half.X,math.max(half.X,size.X-half.X))
+ local y=math.clamp(pos.Y,half.Y,math.max(half.Y,size.Y-half.Y))
+ if x-half.X<14 then x=half.X elseif size.X-half.X-x<14 then x=size.X-half.X end
+ if y-half.Y<14 then y=half.Y elseif size.Y-half.Y-y<14 then y=size.Y-half.Y end
+ return Vector2.new(x,y)
+end
+local function updateSlider(x)
+ local alpha=math.clamp((x-sliderTrack.AbsolutePosition.X)/sliderTrack.AbsoluteSize.X,0,1)
+ state.scale=math.floor(75+alpha*(scaleMaximum-75)+.5); store:SetAttribute('Scale',state.scale)
+ sliderFill.Size=UDim2.fromScale(alpha,1); sliderKnob.Position=UDim2.fromScale(alpha,.5)
+ scaleLabel.Text=state.scale..'%'; fit()
+end
+on(sliderHit.InputBegan,function(input)
+ if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then slideInput=input; updateSlider(input.Position.X) end
+end)
+local function beginWindowDrag(input)
+ if not state.open then return end
+ if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+ dragInput=input
+ dragStart=Vector2.new(input.Position.X,input.Position.Y)
+ startPosition=windowCenter()
+ dragTarget=startPosition
+ dragSettling=true
+end
+on(dragHandle.InputBegan,beginWindowDrag)
+-- Narrow edge handles never cover buttons or other controls.
+for _,edge in ipairs({
+ {'DragLeft',UDim2.new(),UDim2.new(0,7,1,0)},
+ {'DragRight',UDim2.new(1,-7,0,0),UDim2.new(0,7,1,0)},
+ {'DragTop',UDim2.new(),UDim2.new(1,0,0,7)},
+ {'DragBottom',UDim2.new(0,0,1,-7),UDim2.new(1,0,0,7)},
+})do
+ local handle=new('Frame',{Name=edge[1],Position=edge[2],Size=edge[3],BackgroundTransparency=1,Active=true,ZIndex=40},root)
+ on(handle.InputBegan,beginWindowDrag)
+end
+on(Input.InputChanged,function(input)
+ local mouse=input.UserInputType==Enum.UserInputType.MouseMovement
+ if slideInput and (input==slideInput or mouse and slideInput.UserInputType==Enum.UserInputType.MouseButton1) then updateSlider(input.Position.X) end
+ if dragInput and (input==dragInput or mouse and dragInput.UserInputType==Enum.UserInputType.MouseButton1) then
+  local delta=Vector2.new(input.Position.X,input.Position.Y)-dragStart
+  dragTarget=clampPosition(startPosition+delta)
+ end
+end)
+on(RunService.RenderStepped,function(dt)
+ if gui.AbsoluteSize~=dragViewport then dragViewport=gui.AbsoluteSize;dragInput=nil;dragSettling=false end
+ if not state.open then dragInput=nil;dragSettling=false;return end
+ if not dragSettling then return end
+ local current=windowCenter()
+ local difference=(current-dragTarget).Magnitude
+ if difference<.03 then root.Position=UDim2.fromOffset(dragTarget.X,dragTarget.Y)
+  if not dragInput then dragSettling=false end
+  return
+ end
+ local pos
+ if state.reduce or not state.smooth then pos=dragTarget
+ else pos=current:Lerp(dragTarget,1-math.exp(-45*math.min(dt,.1))) end
+ root.Position=UDim2.fromOffset(pos.X,pos.Y)
+end)
+on(Input.InputEnded,function(input)
+ if input==slideInput then slideInput=nil end
+ if dragInput and (input==dragInput or input.UserInputType==Enum.UserInputType.MouseButton1 and dragInput.UserInputType==Enum.UserInputType.MouseButton1) then dragInput=nil end
+end)
+on(Input.WindowFocusReleased,function() dragInput=nil;dragSettling=false;slideInput=nil end)
+
+end
+launcher=new('ImageButton',{Name='OpenObsidian',Position=UDim2.fromOffset(18,16),Size=UDim2.fromOffset(56,56),BackgroundColor3=Color3.fromRGB(8,10,15),BorderSizePixel=0,AutoButtonColor=false,Image=LAUNCHER_IMAGE,ImageColor3=Color3.new(1,1,1),ScaleType=Enum.ScaleType.Fit,Visible=false,ClipsDescendants=true,Active=true},gui)
+round(launcher,13)
+local floating={}
+local hoverScale=new('UIScale',{Scale=1},launcher)
+launcher.Image=''
+launcher.BackgroundTransparency=1
+floating.launcherVisual=new('CanvasGroup',{Name='BlackHoleVisual',Size=UDim2.fromScale(1,1),BackgroundTransparency=1},launcher)
+launcher.Size=UDim2.fromOffset(68,68)
+launcher.Position=UDim2.fromOffset(math.floor(math.max(0,gui.AbsoluteSize.X-68)/2),8)
+floating.asset=loadRemoteImage('FyrelithBlackHole.v1.png')
+floating.glow=new('ImageLabel',{Name='AccretionGlow',AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1.08,1.08),BackgroundTransparency=1,Image=floating.asset,ImageTransparency=.78,ImageColor3=Color3.fromRGB(181,160,255),ScaleType=Enum.ScaleType.Fit},floating.launcherVisual)
+floating.lensPulse=new('Frame',{Name='LensPulse',AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(22,22),BackgroundTransparency=1},floating.launcherVisual) round(floating.lensPulse,40)
+floating.pulseEdge=stroke(floating.lensPulse,Color3.fromRGB(211,196,255),1) floating.pulseEdge.Thickness=1
+floating.planet=new('ImageLabel',{Name='EventHorizon',AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Image=floating.asset,ScaleType=Enum.ScaleType.Fit},floating.launcherVisual)
+local iconAura=new('Frame',{Name='LauncherAura',BackgroundTransparency=1,Visible=false,Active=false,ZIndex=0},gui)
+local auraStrokes,auraGradients={},{}
+floating.energy=new('NumberValue',{Name='HoverEnergy',Value=0},launcher)
+floating.flowLight=new('UIGradient',{Rotation=20,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(191,185,230)),ColorSequenceKeypoint.new(.42,Color3.new(1,1,1)),ColorSequenceKeypoint.new(.62,Color3.fromRGB(222,215,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(174,176,215))})},floating.planet)
+floating.dust={}
+for i=1,7 do
+ local trail={}
+ for j=1,3 do
+  local dot=new('Frame',{Name='InfallDust',AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(j==1 and 1.6 or 1,j==1 and 1.6 or 1),BackgroundColor3=i%2==0 and Color3.fromRGB(213,195,255) or Color3.fromRGB(228,234,255),BackgroundTransparency=1,BorderSizePixel=0},floating.launcherVisual) round(dot,3)
+  trail[j]=dot
+ end
+ floating.dust[i]=trail
+end
+local hovered=false
+local hoverRevision=0
+local hoverCard=new('CanvasGroup',{Name='PerformanceHover',BackgroundTransparency=1,Size=UDim2.fromOffset(320,76),GroupTransparency=1,Visible=false,ZIndex=80,Active=false},gui)
+local hoverCardScale=new('UIScale',{Scale=.97},hoverCard)
+-- Minimal Luxe: actual translucent surfaces, sharp live type, restrained silver edges.
+for i=3,1,-1 do
+ local shadow=new('Frame',{Name='SoftShadow',Position=UDim2.fromOffset(6-i,12+i),Size=UDim2.fromOffset(308+i*2,56),BackgroundColor3=Color3.new(),BackgroundTransparency=.95,BorderSizePixel=0},hoverCard) round(shadow,30)
+end
+local perfPanel=new('Frame',{Name='Panel',BackgroundColor3=Color3.fromRGB(10,11,16),BackgroundTransparency=.20,BorderSizePixel=0,Position=UDim2.fromOffset(6,8),Size=UDim2.fromOffset(308,56)},hoverCard) round(perfPanel,28)
+new('UIGradient',{Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(151,155,177))},perfPanel)
+floating.luxeEdge=stroke(perfPanel,white,.30)
+floating.edgeLight=new('UIGradient',{Rotation=15,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(89,93,111)),ColorSequenceKeypoint.new(.35,Color3.fromRGB(232,235,249)),ColorSequenceKeypoint.new(.53,Color3.fromRGB(176,151,251)),ColorSequenceKeypoint.new(.72,Color3.fromRGB(117,122,150)),ColorSequenceKeypoint.new(1,Color3.fromRGB(52,56,71))})},floating.luxeEdge)
+floating.inner=new('Frame',{Name='InsetEdge',Position=UDim2.fromOffset(2,2),Size=UDim2.new(1,-4,1,-4),BackgroundTransparency=1,BorderSizePixel=0},perfPanel) round(floating.inner,27) stroke(floating.inner,Color3.fromRGB(159,164,190),.88)
+floating.glassGlow=new('Frame',{Name='AmbientEdge',Position=UDim2.fromOffset(-1,-1),Size=UDim2.new(1,2,1,2),BackgroundTransparency=1,BorderSizePixel=0},perfPanel) round(floating.glassGlow,30)
+floating.haloEdge=stroke(floating.glassGlow,Color3.fromRGB(167,148,226),.94) floating.haloEdge.Thickness=4
+floating.brand=text(perfPanel,'FYRELITH',17,0,82,56,13,white,true) floating.brand.TextSize=13
+floating.liveDot=new('Frame',{Name='Live',Position=UDim2.fromOffset(107,25),Size=UDim2.fromOffset(6,6),BackgroundColor3=Color3.fromRGB(100,229,167),BorderSizePixel=0},perfPanel) round(floating.liveDot,6)
+for _,x in ipairs({125,202}) do
+ local line=new('Frame',{Position=UDim2.fromOffset(x,17),Size=UDim2.fromOffset(1,22),BackgroundColor3=Color3.fromRGB(171,176,199),BackgroundTransparency=.67,BorderSizePixel=0},perfPanel)
+ new('UIGradient',{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(1,1)})},line)
+end
+floating.fpsLabel=text(perfPanel,'FPS',136,0,25,56,10,muted) floating.fpsLabel.TextSize=10
+local fpsValue=text(perfPanel,'—',165,0,34,56,16,white,true) fpsValue.Name='FPS' fpsValue.TextSize=16
+floating.pingLabel=text(perfPanel,'PING',212,0,28,56,10,muted) floating.pingLabel.TextSize=10
+local pingValue=text(perfPanel,'—',244,0,55,56,16,white,true) pingValue.Name='Ping' pingValue.TextSize=16
+for _,value in ipairs({fpsValue,pingValue}) do
+ value.TextScaled=true
+ new('UITextSizeConstraint',{MinTextSize=11,MaxTextSize=16},value)
+end
+for _,item in ipairs(perfPanel:QueryDescendants('TextLabel')) do
+ item.TextYAlignment=Enum.TextYAlignment.Center
+ item.Font=item==floating.brand and Enum.Font.GothamBold or Enum.Font.GothamMedium
+end
+local perfParticles=new('Frame',{Name='LuxeEffects',Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ClipsDescendants=true},perfPanel) round(perfParticles,28)
+floating.sweep=new('Frame',{Name='LightSweep',Size=UDim2.fromOffset(42,80),Position=UDim2.fromOffset(-70,-12),Rotation=18,BackgroundColor3=Color3.fromRGB(208,219,255),BackgroundTransparency=.975,BorderSizePixel=0},perfParticles)
+new('UIGradient',{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,.2),NumberSequenceKeypoint.new(1,1)})},floating.sweep)
+floating.topGlint=new('Frame',{Name='TopGlint',Position=UDim2.fromOffset(40,0),Size=UDim2.fromOffset(75,1),BackgroundColor3=Color3.fromRGB(222,213,255),BackgroundTransparency=.18,BorderSizePixel=0},perfParticles)
+new('UIGradient',{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,.05),NumberSequenceKeypoint.new(1,1)})},floating.topGlint)
+floating.statusSpark={}
+local perfDots={}
+local function positionHover()
+ local bounds=gui.AbsoluteSize
+ floating.hoverFit=math.min(1,math.max(.25,(bounds.X-8)/320))
+ local w,h=320*floating.hoverFit,76*floating.hoverFit
+ local x=launcher.Position.X.Offset+launcher.AbsoluteSize.X+6
+ floating.opensLeft=x+w>bounds.X-4
+ if floating.opensLeft then x=launcher.Position.X.Offset-w-6 end
+ local y=launcher.Position.Y.Offset+launcher.AbsoluteSize.Y/2-h/2
+ hoverCard.Position=UDim2.fromOffset(math.clamp(x,4,math.max(4,bounds.X-w-4)),math.clamp(y,4,math.max(4,bounds.Y-h-4)))
+end
+
+local function hidePerformance()
+ hovered=false;hoverRevision+=1;local revision=hoverRevision
+ animate(floating.energy,{Value=0},.3)
+ for _,edge in ipairs(auraStrokes)do animate(edge,{Transparency=1},.2) end
+ animate(hoverScale,{Scale=1},.16)
+ animate(hoverCard,{GroupTransparency=1},.16)
+ animate(hoverCardScale,{Scale=(floating.hoverFit or 1)*.97},.16)
+ task.delay(state.smooth and not state.reduce and .16 or 0,function()
+  if not dead and revision==hoverRevision then hoverCard.Visible=false end
+ end)
+end
+on(launcher.MouseEnter,function()
+ if state.open or launcher:GetAttribute('Dragging') then return end
+ hovered=true;hoverRevision+=1
+ animate(floating.energy,{Value=1},.32)
+ positionHover();hoverCard.Visible=true
+ perfPanel.Position=UDim2.fromOffset(floating.opensLeft and 12 or 0,8) animate(perfPanel,{Position=UDim2.fromOffset(6,8)},.26)
+ iconAura.Visible=true
+ for i,edge in ipairs(auraStrokes)do animate(edge,{Transparency=({.94,.84,.25})[i]},.22) end
+ animate(hoverScale,{Scale=1.055},.2)
+ animate(hoverCard,{GroupTransparency=0},.22)
+ animate(hoverCardScale,{Scale=floating.hoverFit or 1},.26)
+end)
+on(launcher.MouseLeave,hidePerformance)
+on(launcher.InputBegan,function(input)
+ if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+    animate(hoverScale,{Scale=.97},.1)
+  floating.lensPulse.Size=UDim2.fromOffset(22,22) floating.pulseEdge.Transparency=.35
+  animate(floating.lensPulse,{Size=UDim2.fromOffset(62,62)},.36)
+  animate(floating.pulseEdge,{Transparency=1},.36)
+ end
+end)
+on(Input.InputEnded,function(input)
+ if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+  animate(hoverScale,{Scale=hovered and 1.055 or 1},.18)
+ end
+end)
+local frameCount,frameSeconds=0,0
+local perfClock=0
+on(RunService.RenderStepped,function(dt)
+ frameCount+=1;frameSeconds+=dt;perfClock+=math.min(dt,.05)
+ iconAura.Visible=launcher.Visible
+ iconAura.Position=UDim2.fromOffset(launcher.Position.X.Offset-6,launcher.Position.Y.Offset-6)
+ iconAura.Size=UDim2.fromOffset(launcher.AbsoluteSize.X+12,launcher.AbsoluteSize.Y+12)
+ if launcher.Visible and state.smooth and not state.reduce then
+  local energy=floating.energy.Value
+  floating.planet.Rotation=math.sin(perfClock*.25)*1.4
+  floating.glow.Rotation=floating.planet.Rotation
+  floating.glow.ImageTransparency=.88-energy*.24+math.sin(perfClock*1.1)*.035
+  floating.flowLight.Rotation=(perfClock*12)%360
+  for i,trail in ipairs(floating.dust) do
+   for j,dot in ipairs(trail) do
+    local phase=(perfClock*(.085+energy*.035)+i/7-(j-1)*.012)%1
+    local radius=31-21*phase
+    local angle=phase*math.pi*3+i*2.399
+    local px,py=radius*math.cos(angle),radius*.36*math.sin(angle)
+    local tilt=math.rad(-16)
+    dot.Position=UDim2.fromOffset(34+px*math.cos(tilt)-py*math.sin(tilt),34+px*math.sin(tilt)+py*math.cos(tilt))
+    dot.BackgroundTransparency=1-math.sin(phase*math.pi)^2*(j==1 and .60 or .25)
+   end
+  end
+  if hoverCard.Visible then
+   floating.haloEdge.Transparency=.94+math.sin(perfClock*1.1)*.02
+   floating.edgeLight.Rotation=12+math.sin(perfClock*.23)*28
+   floating.topGlint.Position=UDim2.fromOffset(22+(perfClock%7)/7*200,0)
+   floating.sweep.Position=UDim2.fromOffset((perfClock%5)/5*390-75,-12)
+   floating.liveDot.BackgroundTransparency=.12+math.sin(perfClock*2)*.10
+   for _,ray in ipairs(floating.statusSpark) do ray.BackgroundTransparency=.12+(math.sin(perfClock*2.2)+1)*.33 end
+  end
+  for i,gradient in ipairs(auraGradients)do gradient.Rotation=(perfClock*85+i*18)%360 end
+ end
+ if frameSeconds>=.4 then
+    fpsValue.Text=tostring(math.floor(frameCount/frameSeconds+.5))
+  pages.Overview.FPSCard.Value.Text=fpsValue.Text
+  do
+   local fps=frameCount/frameSeconds
+   local card=pages.Overview.FPSCard
+   local color=fps>=55 and Color3.fromRGB(99,220,160) or (fps>=30 and Color3.fromRGB(245,191,100) or Color3.fromRGB(242,123,130))
+   card.Status.Text=fps>=55 and 'Smooth' or (fps>=30 and 'Moderate' or 'Low frame rate')
+   card.Status.TextColor3=color;card.StatusDot.BackgroundColor3=color
+  end
+  if hoverCard.Visible or (state.open and state.page=='Overview') then
+   local ok,value=pcall(function()return game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue()end)
+   pingValue.Text=ok and type(value)=='number' and tostring(math.floor(value+.5))..' ms' or '—'
+   pages.Overview.PingCard.Value.Text=pingValue.Text
+   do
+    local card=pages.Overview.PingCard
+    local valid=ok and type(value)=='number'
+    local color=valid and (value<100 and Color3.fromRGB(99,220,160) or (value<180 and Color3.fromRGB(245,191,100) or Color3.fromRGB(242,123,130))) or muted
+    card.Status.Text=valid and (value<100 and 'Stable' or (value<180 and 'Moderate latency' or 'High latency')) or 'Unavailable'
+    card.Status.TextColor3=color;card.StatusDot.BackgroundColor3=color
+   end
+  end
+  frameCount=0;frameSeconds=0
+ end
+ if not launcher.Visible then
+  if hovered then hidePerformance() end
+  return
+ end
+ if not hoverCard.Visible then return end
+ positionHover();perfParticles.Visible=state.stars
+ if not state.stars or state.reduce or not state.smooth then return end
+ for _,s in ipairs(perfDots)do
+  s.y=(s.y-s.speed*math.min(dt,.05))%1
+  s.dot.Position=UDim2.fromScale(s.x,s.y)
+  s.dot.BackgroundTransparency=.66+math.sin(perfClock*.7+s.phase)*.15
+ end
+end)
+
+-- No hold timer: rebase at the drag threshold instead of jumping by the
+-- accumulated press distance. Motion is smoothed once per rendered frame.
+local launcherDrag,launcherStart,launcherOrigin
+local launcherMoved=false
+local suppressLauncherClickUntil=0
+local dragTarget=Vector2.new(launcher.Position.X.Offset,launcher.Position.Y.Offset)
+local function clampLauncher(pos)
+ local camera=workspace.CurrentCamera
+ if not camera then return pos end
+ local top,bottom=game:GetService('GuiService'):GetGuiInset()
+ local safe=camera.ViewportSize-top-bottom
+ local bounds=gui.AbsoluteSize
+ local width,height=launcher.AbsoluteSize.X,launcher.AbsoluteSize.Y
+ local maxX,maxY=math.max(0,bounds.X-width),math.max(0,bounds.Y-height)
+ local x,y=math.clamp(pos.X,0,maxX),math.clamp(pos.Y,0,maxY)
+ if x<14 then x=0 elseif maxX-x<14 then x=maxX end
+ if y<14 then y=0 elseif maxY-y<14 then y=maxY end
+ return Vector2.new(x,y)
+end
+on(launcher.InputBegan,function(input)
+ if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+ launcherDrag=input
+ launcherStart=Vector2.new(input.Position.X,input.Position.Y)
+ launcherOrigin=Vector2.new(launcher.Position.X.Offset,launcher.Position.Y.Offset)
+ dragTarget=launcherOrigin
+ launcherMoved=false
+ suppressLauncherClickUntil=0
+end)
+on(Input.InputChanged,function(input)
+ if not launcherDrag or not launcher.Visible then return end
+ local mouse=launcherDrag.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseMovement
+ if input~=launcherDrag and not mouse then return end
+ local pos=Vector2.new(input.Position.X,input.Position.Y)
+ local delta=pos-launcherStart
+ if not launcherMoved then
+  if delta.Magnitude<6 then return end
+  launcherMoved=true
+  launcher:SetAttribute('Dragging',true)
+  launcherStart=pos
+  launcherOrigin=Vector2.new(launcher.Position.X.Offset,launcher.Position.Y.Offset)
+  dragTarget=launcherOrigin
+  hidePerformance()
+  animate(hoverScale,{Scale=1},.12)
+  suppressLauncherClickUntil=os.clock()+.2
+  return
+ end
+ dragTarget=clampLauncher(launcherOrigin+delta)
+ suppressLauncherClickUntil=os.clock()+.2
+end)
+on(RunService.RenderStepped,function(dt)
+ if not launcher.Visible then return end
+ local current=Vector2.new(launcher.Position.X.Offset,launcher.Position.Y.Offset)
+ if not launcherMoved then return end
+ if (current-dragTarget).Magnitude<.02 then launcher.Position=UDim2.fromOffset(dragTarget.X,dragTarget.Y) return end
+ local nextPosition
+ if state.reduce or not state.smooth then nextPosition=dragTarget
+ else nextPosition=current:Lerp(dragTarget,1-math.exp(-55*math.min(dt,.1))) end
+ launcher.Position=UDim2.fromOffset(nextPosition.X,nextPosition.Y)
+end)
+on(Input.InputEnded,function(input)
+ if not launcherDrag then return end
+ local mouse=launcherDrag.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseButton1
+ if input==launcherDrag or mouse then
+  if launcherMoved then suppressLauncherClickUntil=os.clock()+.2 end
+  launcherDrag=nil
+  launcher:SetAttribute('Dragging',false)
+ end
+end)
+on(Input.WindowFocusReleased,function()
+ launcherDrag=nil
+ launcher:SetAttribute('Dragging',false)
+end)
+
+local setOpen
+do
+local transitionId=0
+local windowTransitionUntil=0
+local savedScrollPositions=setmetatable({},{__mode='k'})
+local windowFade=new('NumberValue',{Name='WindowTransitionAlpha',Value=0},root)
+local fadeRecords
+local function animateWindow(obj,properties,duration)
+ if activeTweens[obj]then activeTweens[obj]:Cancel();activeTweens[obj]=nil end
+ if duration<=0 then for key,value in pairs(properties)do obj[key]=value end;return end
+ local animation=TweenService:Create(obj,TweenInfo.new(duration,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),properties)
+ activeTweens[obj]=animation;animation:Play()
+end
+local function captureWindowFade()
+ if fadeRecords then return end
+ fadeRecords={}
+ local foreground=canvas:FindFirstChild('CrispContent')
+ if not foreground then return end
+ for _,obj in ipairs(foreground:QueryDescendants('GuiObject, UIStroke'))do
+  local shown=true;local ancestor=obj
+  while ancestor and ancestor~=foreground do
+   if ancestor:IsA('GuiObject')and not ancestor.Visible then shown=false;break end
+   ancestor=ancestor.Parent
+  end
+  if not shown then continue end
+  local properties={}
+  if obj:IsA('GuiObject')then properties.BackgroundTransparency=obj.BackgroundTransparency end
+  if obj:IsA('TextLabel')or obj:IsA('TextButton')or obj:IsA('TextBox')then
+   properties.TextTransparency=obj.TextTransparency;properties.TextStrokeTransparency=obj.TextStrokeTransparency
+  elseif obj:IsA('ImageLabel')or obj:IsA('ImageButton')or obj:IsA('ViewportFrame')then properties.ImageTransparency=obj.ImageTransparency
+  elseif obj:IsA('UIStroke')then properties.Transparency=obj.Transparency end
+  for property,base in pairs(properties)do if base>=1 then properties[property]=nil end end
+  if next(properties)then fadeRecords[#fadeRecords+1]={Object=obj,Properties=properties}end
+ end
+end
+local function applyWindowFade(alpha)
+ for _,record in ipairs(fadeRecords or {})do if record.Object.Parent then
+  for property,base in pairs(record.Properties)do record.Object[property]=base+(1-base)*alpha end
+ end end
+end
+local function restoreWindowFade()
+ applyWindowFade(0);fadeRecords=nil
+end
+on(windowFade.Changed,applyWindowFade)
+setOpen=function(value)
+ value=value==true
+ local wasTransitioning=os.clock()<windowTransitionUntil
+ if value==state.open and not wasTransitioning and root.Visible==value then return end
+ transitionId+=1;local id=transitionId
+ if not value and state.open and not wasTransitioning then
+  for _,scroll in ipairs(canvas:QueryDescendants('ScrollingFrame'))do savedScrollPositions[scroll]=scroll.CanvasPosition end
+ end
+ state.open=value;dropdown.set(false,true)
+ launcherDrag=nil;launcher:SetAttribute('Dragging',false);hidePerformance()
+ local tooltip=canvas:FindFirstChild('Tooltip',true);if tooltip then tooltip.Visible=false end
+ capturingKey=false;hotkeyText.Text=keyName(hotkey)
+ local duration=state.smooth and not state.reduce and .24 or 0
+ windowTransitionUntil=os.clock()+duration
+ captureWindowFade()
+ local center=UDim2.fromScale(.5,.5)
+ local scale=math.max(uiScale.Scale,.01)
+ local windowCenter=root.AbsolutePosition+root.AbsoluteSize/2
+ local iconCenter=launcher.AbsolutePosition+launcher.AbsoluteSize/2
+ local offset=(iconCenter-windowCenter)/scale
+ local resting=UDim2.new(.5,offset.X,.5,offset.Y)
+ local compactScale=math.clamp(launcher.AbsoluteSize.X/math.max(root.AbsoluteSize.X,1),.04,.16)
+ if value and not root.Visible then
+  canvas.Position=resting;motion.Position=resting;motionScale.Scale=compactScale
+  windowFade.Value=1;applyWindowFade(1);surface.GroupTransparency=1;motion.GroupTransparency=1
+ end
+ root.Visible=true
+ launcher.Active=not value
+ animateWindow(canvas,{Position=value and center or resting},duration)
+ animateWindow(motionScale,{Scale=value and 1 or compactScale},duration)
+ animateWindow(windowFade,{Value=value and 0 or 1},duration)
+ animateWindow(surface,{GroupTransparency=value and 0 or 1},duration)
+ animateWindow(motion,{Position=value and center or resting,GroupTransparency=value and 0 or 1},duration)
+ if value then
+  if launcher.Visible then
+   animateWindow(launcher,{ImageTransparency=1,BackgroundTransparency=1},duration)
+   animateWindow(floating.launcherVisual,{GroupTransparency=1},duration)
+   animateWindow(hoverScale,{Scale=.94},duration)
+  end
+ elseif state.showIcon then
+  if not launcher.Visible then
+   launcher.ImageTransparency=1;floating.launcherVisual.GroupTransparency=1;hoverScale.Scale=.94
+  end
+  launcher.Visible=true;launcher.Active=true
+  animateWindow(launcher,{ImageTransparency=0,BackgroundTransparency=1},duration)
+  animateWindow(floating.launcherVisual,{GroupTransparency=0},duration)
+  animateWindow(hoverScale,{Scale=1},duration)
+ else launcher.Visible=false end
+ animateWindow(blur,{Size=value and 8 or 0},duration)
+ task.delay(duration,function()
+  if dead or transitionId~=id then return end
+  root.Visible=state.open
+  if state.open then
+   launcher.Visible=false;motion.GroupTransparency=0;surface.GroupTransparency=0
+   canvas.Position=center;motion.Position=center;motionScale.Scale=1
+   restoreWindowFade()
+   for scroll,position in pairs(savedScrollPositions)do if scroll.Parent then scroll.CanvasPosition=position end end
+  else
+   restoreWindowFade();launcher.Visible=state.showIcon;launcher.Active=true
+   launcher.ImageTransparency=0;launcher.BackgroundTransparency=1;floating.launcherVisual.GroupTransparency=0
+  end
+ end)
+end
+
+end
+
+
+local windowControl=Instance.new('BindableFunction')
+windowControl.Name='SetWindowOpen'
+windowControl.OnInvoke=function(value)
+ local previous=state.open
+ if type(value)=='boolean' then setOpen(value) end
+ return previous
+end
+windowControl.Parent=gui
+on(minimize.Activated,function() setOpen(false) end)
+local function restoreFromIcon()
+ if state.open or os.clock()<suppressLauncherClickUntil then return end
+ -- No extra delay: icon fade and window reveal start together on the click.
+ setOpen(true)
+end
+on(launcher.Activated,restoreFromIcon)
+on(launcher.MouseButton1Click,restoreFromIcon)
+
+-- Close hides the panel; the selected shortcut or launcher can reopen it.
+on(close.Activated,function() setOpen(false) end)
+on(hotkeyButton.Activated,function()
+ capturingKey=not capturingKey
+ hotkeyText.Text=capturingKey and 'Press a key…' or keyName(hotkey)
+ if capturingKey then notify('Press a keyboard key. Esc cancels.') end
+end)
+on(search.Focused,function()
+ capturingKey=false; hotkeyText.Text=keyName(hotkey)
+end)
+on(Input.InputBegan,function(input,processed)
+ if capturingKey then
+  if input.UserInputType~=Enum.UserInputType.Keyboard then return end
+  if input.KeyCode==Enum.KeyCode.Escape then
+   capturingKey=false; hotkeyText.Text=keyName(hotkey); return
+  end
+  if input.KeyCode==Enum.KeyCode.Unknown then return end
+  hotkey=input.KeyCode; capturingKey=false; store:SetAttribute('Hotkey',hotkey.Name)
+  hotkeyText.Text=keyName(hotkey)
+  shortcutHint.Text=keyName(hotkey)..' to hide or show  ·  Drag the top bar to move'
+  notify('Window shortcut: '..keyName(hotkey))
+  return -- Binding a key must never minimize the window at the same time.
+ end
+ if not processed and not Input:GetFocusedTextBox() and input.KeyCode==hotkey then setOpen(not state.open) end
+end)
+local tooltip=panel(surface,'Tooltip',0,0,330,36,'field',7); tooltip.Visible=false; tooltip.ZIndex=25
+local tooltipText=text(tooltip,'',12,0,306,36,12); tooltipText.ZIndex=26
+for _,desc in ipairs(descriptions) do
+ desc.Active=true
+ on(desc.MouseEnter,function()
+  if not state.tips then return end
+  tooltipText.Text=desc.Text
+  local x=(desc.AbsolutePosition.X-surface.AbsolutePosition.X)/uiScale.Scale
+  local y=(desc.AbsolutePosition.Y-surface.AbsolutePosition.Y)/uiScale.Scale+27
+  tooltip.Position=UDim2.fromOffset(math.clamp(x,8,root.Size.X.Offset-338),math.clamp(y,8,root.Size.Y.Offset-44)); tooltip.Visible=true
+ end)
+ on(desc.MouseLeave,function() tooltip.Visible=false end)
+end
+on(search:GetPropertyChangedSignal('Text'),function()
+ local query=string.lower(search.Text)
+ if state.page=='Settings' then
+  for _,entry in ipairs(searchable) do
+   local match=query=='' or string.find(entry.name,query,1,true)~=nil
+   -- Preserve card geometry while dimming unrelated rows.
+   for _,obj in ipairs(entry.obj:QueryDescendants('TextLabel')) do obj.TextTransparency=match and 0 or .7 end
+  end
+ end
+end)
+on(search.FocusLost,function(enter)
+ if enter then
+  local query=string.lower(search.Text)
+  for name in pairs(pages) do if query~='' and string.find(string.lower(name),query,1,true) then selectPage(name); break end end
+ end
+end)
+local viewportFocused=true
+local pendingViewport=nil
+local viewportStableSince=0
+on(Input.WindowFocusReleased,function()
+ viewportFocused=false pendingViewport=nil
+end)
+on(Input.WindowFocused,function()
+ viewportFocused=true pendingViewport=nil viewportStableSince=os.clock()
+end)
+local clock=0
+on(RunService.RenderStepped,function(dt)
+ if dead then return end
+ local camera=workspace.CurrentCamera
+ if viewportFocused and camera then
+  local size=camera.ViewportSize
+  if size.X>=320 and size.Y>=240 and size~=viewport then
+   if pendingViewport~=size then pendingViewport=size viewportStableSince=os.clock()
+   elseif os.clock()-viewportStableSince>=.25 then
+    fit() pendingViewport=nil
+   end
+  else pendingViewport=nil end
+ end
+ if not state.open then return end
+ clock+=math.min(dt,.05)
+ if not state.smooth or state.reduce then return end
+ if (state.theme=='Space' or state.theme=='Event Horizon' or state.theme=='Nebula Violet' or state.theme=='Stardust Blue') then
+  spaceArt.image.Position=UDim2.fromOffset(-2+math.sin(clock*.13),(spaceArt.image:GetAttribute('HeaderBaseY')or -2)+math.cos(clock*.11)*.5)
+ end
+ if state.theme=='Halloween' then
+  ghost.Position=UDim2.fromOffset(1045,122+math.sin(clock*.8)*3)
+  pumpkin.Rotation=-8+math.sin(clock*.45)*2
+  sidebarPumpkin.Rotation=8+math.sin(clock*.4)*2
+  halloweenBat.Rotation=-16+math.sin(clock*.65)*4
+  halloweenMoon.Position=UDim2.fromOffset(839,102+math.sin(clock*.4)*2)
+ end
+ if not state.stars then return end
+ for _,s in ipairs(stars) do
+  s.y=(s.y-s.speed*math.min(dt,.05))%1
+  s.dot.Position=UDim2.fromScale((s.x+math.sin(clock*.3+s.phase)*s.drift)%1,s.y)
+  s.dot.BackgroundTransparency=.29+math.sin(clock*.85+s.phase)*.17
+ end
+end)
+on(gui.Destroying,function()
+ dead=true
+ for _,c in ipairs(connections) do c:Disconnect() end
+ for _,t in pairs(activeTweens) do t:Cancel() end
+ if dropdown.tween then dropdown.tween:Cancel() end
+ blur:Destroy()
+end)
+task.spawn(function()
+ local assets={} for _,id in pairs(iconAssets) do table.insert(assets,'rbxassetid://'..id) end
+ for _,obj in ipairs(decorationImages) do table.insert(assets,obj.Image) end
+ table.insert(assets,'rbxassetid://6772783963')
+ if DEEP_VOID_IMAGE~='' then table.insert(assets,DEEP_VOID_IMAGE) end
+ local ok,err=pcall(function() game:GetService('ContentProvider'):PreloadAsync(assets) end)
+ if not ok and not dead then warn('Obsidian icon preload: '..tostring(err)) end
+end)
+-- Only decorative backgrounds are rasterized for rounded clipping.
+do
+ local foreground=new('Frame',{Name='CrispContent',BackgroundTransparency=1,Size=UDim2.fromOffset(960,1040),ZIndex=3},canvas)
+ foreground:SetAttribute('NativeTextRendering',true)
+ for _,obj in ipairs(surface:GetChildren()) do
+  if obj:IsA('CanvasGroup') or obj.Name=='Tooltip' then obj.Parent=foreground end
+ end
+ on(surface.ChildAdded,function(obj)if obj:IsA('CanvasGroup') or obj.Name=='Tooltip' then obj.Parent=foreground end end)
+ header.Parent=foreground
+ body.Parent=foreground
+ local sidebarContent=new('Frame',{Name='SidebarContent',BackgroundTransparency=1,Position=sidebar.Position,Size=sidebar.Size},foreground)
+ for _,obj in ipairs(sidebar:GetChildren()) do
+  if obj:IsA('GuiObject') and obj.Name~='HalloweenSidebar' then obj.Parent=sidebarContent end
+ end
+end
+
+-- Rose Eclipse host layout. All ten categories remain reachable in two compact rows.
+;(function()
+ header.Size=UDim2.fromOffset(960,138)
+ brand.Text='FYRELITH' brand.Font=Enum.Font.GothamMedium brand.TextSize=30
+ brand.Position=UDim2.fromOffset(28,54) brand.Size=UDim2.fromOffset(320,46) brand.TextColor3=Color3.fromRGB(249,229,235)
+ brandLogo.Visible=false
+ for _,obj in ipairs(header:GetChildren())do if obj:IsA('TextLabel')and obj~=brand then obj.Visible=false end end
+ local signature=text(header,'R O S E   E C L I P S E',30,102,320,22,12,Color3.fromRGB(210,170,183))
+ signature.Name='RoseSignature' signature.TextSize=13
+ local dock=header:FindFirstChild('CommandDock')
+ if dock then dock.Position=UDim2.fromOffset(374,16)end
+ dragHandle.Size=UDim2.fromOffset(960,138) dragHandle.ZIndex=1
+ if dock then dock.ZIndex=3 end
+ sidebar.Position=UDim2.fromOffset(16,146) sidebar.Size=UDim2.fromOffset(928,86) sidebar.BackgroundTransparency=.15
+ local navHost=canvas:FindFirstChild('CrispContent'):FindFirstChild('SidebarContent')
+ navHost.Position=sidebar.Position navHost.Size=sidebar.Size
+ local order={'Overview','Main','Auto Play','Summon','Event','Macro','Dungeon','Misc','Webhook','Settings'}
+ for _,obj in ipairs(navHost:GetChildren())do if obj:IsA('GuiObject')then obj.Visible=false end end
+ for i,name in ipairs(order)do
+  local n=navs[name] local x=8+((i-1)%5)*184 local y=5+math.floor((i-1)/5)*40
+  n.button.Visible=true n.button.Position=UDim2.fromOffset(x,y) n.button.Size=UDim2.fromOffset(176,36)
+  n.title.Position=UDim2.fromOffset(42,0) n.title.Size=UDim2.fromOffset(130,36) n.title.TextSize=17
+  local image=n.button:FindFirstChildWhichIsA('ImageLabel')if image then image.Position=UDim2.fromOffset(12,9)image.Size=UDim2.fromOffset(18,18)end
+ end
+ navIndicator.Visible=true navIndicator.Size=UDim2.fromOffset(176,36)
+ navIndicatorFill.Size=UDim2.fromOffset(176,36)
+ navIndicatorBar.Position=UDim2.fromOffset(12,34)navIndicatorBar.Size=UDim2.fromOffset(152,2)
+ divider.Visible=false
+ body.Position=UDim2.fromOffset(26,247) body.Size=UDim2.fromOffset(908,630)
+ heading.TextSize=29 heading.Size=UDim2.fromOffset(860,43)
+ for _,p in pairs(pages)do p.Size=UDim2.fromOffset(908,564)p.ScrollBarThickness=4 p.ScrollBarImageColor3=Color3.fromRGB(220,150,166)end
+ toast.Position=UDim2.fromOffset(600,846)
+ -- Hide the old horizontal divider, whose width belonged to the previous layout.
+ for _,obj in ipairs(surface:GetChildren())do if obj:IsA('Frame')and obj.Size==UDim2.fromOffset(1200,1)then obj.Visible=false end end
+ gui:SetAttribute('Design','Rose Eclipse')
+end)()
+;(function()
+ local home=pages.Overview
+ local map=home:FindFirstChild('CurrentMap')
+ map.Position=UDim2.fromOffset(8,112) map.Size=UDim2.fromOffset(624,310)
+ local thumb=map:FindFirstChild('Thumbnail')thumb.Size=UDim2.fromOffset(592,190)
+ local fallback=thumb:FindFirstChildWhichIsA('TextLabel')if fallback then fallback.Position=UDim2.fromOffset(16,78)end
+ for _,obj in ipairs(map:GetChildren())do
+  if obj:IsA('TextLabel')and obj.Position.Y.Offset>=210 then obj.Position+=UDim2.fromOffset(0,32)end
+ end
+ for i,name in ipairs({'FPSCard','PingCard'})do
+  local card=home[name]card.Position=UDim2.fromOffset(648,112+(i-1)*163)card.Size=UDim2.fromOffset(252,147)
+  card.Value.TextSize=35 card.Value.Position=UDim2.fromOffset(20,61)
+  card.Status.Position=UDim2.fromOffset(36,116)card.StatusDot.Position=UDim2.fromOffset(21,126)
+ end
+ shortcutHint.Position=UDim2.fromOffset(12,540)shortcutHint.Size=UDim2.fromOffset(880,24)shortcutHint.TextSize=14
+ local cards={{'Auto Play','Play','Placement, upgrades & team'},{'Summon','Star','Units, traits & rerolls'},{'Settings','Settings','Appearance & preferences'}}
+ for i,entry in ipairs(cards)do
+  local b=control(home,'HomeShortcut'..i,8+(i-1)*300,438,292,90)
+  b.BackgroundTransparency=.08
+  local image=icon(b,entry[2],16,17,23)bind(image,'ImageColor3','accent')
+  local title=text(b,entry[1],51,10,223,29,18,white,true)title.Name='Title'
+  local caption=text(b,entry[3],16,48,260,26,14,muted)caption.Name='Description'caption.TextSize=14
+  local arrow=icon(b,'Chevron',261,19,14)arrow.Rotation=-90 bind(arrow,'ImageColor3','accent')
+  on(b.Activated,function()selectPage(entry[1])end)
+ end
+ home.CanvasSize=UDim2.fromOffset(0,564)
+end)()
+-- Reference layout: five tabs; secondary categories stay available under More.
+;(function()
+ header.Size=UDim2.fromOffset(960,218)
+ brand.Text='F Y R E L I T H';brand.TextSize=44;brand.Position=UDim2.fromOffset(106,42);brand.Size=UDim2.fromOffset(530,64)
+ local emblem=new('ImageLabel',{Name='RoseEmblem',Image='rbxassetid://16898613777',ImageRectOffset=Vector2.new(967,0),ImageRectSize=Vector2.new(48,48),Position=UDim2.fromOffset(28,42),Size=UDim2.fromOffset(64,64),BackgroundTransparency=1,ImageColor3=white,Active=false},header);bind(emblem,'ImageColor3','accent')
+ local signature=header:FindFirstChild('RoseSignature')if signature then signature.Position=UDim2.fromOffset(110,106);signature.Size=UDim2.fromOffset(450,42);signature.TextSize=12;signature.Text='A  B R I G H T E R  T O M O R R O W\nI N  D A R K E R  S K I E S .';signature.TextWrapped=true end
+ local dock=header:FindFirstChild('CommandDock')if dock then dock.Visible=false end
+ for i,b in ipairs({minimize,close})do b.Parent=header;b.Position=UDim2.fromOffset(836+(i-1)*54,14);b.Size=UDim2.fromOffset(44,38);b.ZIndex=20;b.BackgroundTransparency=.25 end
+ dragHandle.Size=UDim2.fromOffset(820,150)
+ sidebar.Position=UDim2.fromOffset(12,166);sidebar.Size=UDim2.fromOffset(936,54);sidebar.BackgroundTransparency=1
+ local navHost=canvas.CrispContent.SidebarContent;navHost.Position=sidebar.Position;navHost.Size=sidebar.Size
+ local more=control(navHost,'More',752,0,182,54)
+ text(more,'•••   More',16,0,152,54,20,white,true).TextXAlignment=Enum.TextXAlignment.Center
+ local menu=panel(canvas.CrispContent,'MoreMenu',724,224,218,286,'card',12);menu.ZIndex=40;menu.Visible=false
+ for _,obj in ipairs(navHost:GetChildren())do if obj:IsA('GuiObject')and obj~=more and obj~=navIndicator then obj.Visible=false end end
+ for i,name in ipairs({'Overview','Auto Play','Summon','Event'})do
+  local n=navs[name];n.button.Visible=true;n.button.Position=UDim2.fromOffset((i-1)*188,0);n.button.Size=UDim2.fromOffset(182,54)
+  n.title.Text=name=='Overview'and'Main'or name;n.title.TextSize=20;n.title.Position=UDim2.fromOffset(48,0);n.title.Size=UDim2.fromOffset(130,54)
+  local image=n.button:FindFirstChildWhichIsA('ImageLabel')if image then image.Position=UDim2.fromOffset(18,16);image.Size=UDim2.fromOffset(23,23)end
+ end
+ for i,name in ipairs({'Main','Macro','Dungeon','Misc','Webhook','Settings'})do
+  local n=navs[name];n.button.Parent=menu;n.button.Visible=true;n.button.Position=UDim2.fromOffset(8,8+(i-1)*45);n.button.Size=UDim2.fromOffset(202,40);n.button.ZIndex=42
+  n.title.Text=name=='Main'and'Auto Join'or name;n.title.Size=UDim2.fromOffset(155,40);n.title.TextSize=18;n.title.ZIndex=44
+  for _,image in ipairs(n.button:GetChildren())do if image:IsA('ImageLabel')then image.ZIndex=44 end end
+  on(n.button.Activated,function()menu.Visible=false end)
+ end
+ on(more.Activated,function()menu.Visible=not menu.Visible end)
+ on(root:GetPropertyChangedSignal('Visible'),function()if not root.Visible then menu.Visible=false end end)
+ on(Input.InputBegan,function(input)
+  if not menu.Visible or input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+  local p=Vector2.new(input.Position.X,input.Position.Y)
+  local function inside(o)local a=o.AbsolutePosition;local s=o.AbsoluteSize;return p.X>=a.X and p.X<=a.X+s.X and p.Y>=a.Y and p.Y<=a.Y+s.Y end
+  if not inside(menu)and not inside(more)then menu.Visible=false end
+ end)
+ navIndicator.Size=UDim2.fromOffset(182,54);navIndicatorFill.Size=UDim2.fromOffset(182,54)
+ navIndicatorBar.Position=UDim2.fromOffset(12,51);navIndicatorBar.Size=UDim2.fromOffset(158,2)
+ body.Position=UDim2.fromOffset(26,242);body.Size=UDim2.fromOffset(908,772)
+ for name,p in pairs(pages)do p.Size=UDim2.fromOffset(908,name=='Auto Play'and 772 or 706)end
+ spaceArt.group.Size=UDim2.fromOffset(960,220)
+ spaceArt.image.Position=UDim2.fromOffset(0,-40);spaceArt.image.Size=UDim2.fromOffset(960,387);spaceArt.image.ScaleType=Enum.ScaleType.Stretch;spaceArt.image.ImageTransparency=0;spaceArt.image.Image=loadRemoteImage('FyrelithThemeHeader.v2.png')
+ spaceArt.shade.BackgroundTransparency=.88
+ starLayer.Visible=false
+ toast.Position=UDim2.fromOffset(600,988)
+end)()
+;(function()
+ local images={Space=spaceArt.image.Image}
+  images.Space=loadRemoteImage('FyrelithHeader.rose-eclipse.atelier-v2.png')
+ images['Event Horizon']=loadRemoteImage('FyrelithHeader.event-horizon.atelier-v2.png')
+ images['Nebula Violet']=loadRemoteImage('FyrelithHeader.nebula-violet.atelier-v2.png')
+ images['Stardust Blue']=loadRemoteImage('FyrelithHeader.stardust-blue.atelier-v2.png')
+
+ local emblem=header:FindFirstChild('RoseEmblem')
+ local signature=header:FindFirstChild('RoseSignature')
+ local ornaments=new('Frame',{Name='ThemeWordmarkDetails',BackgroundTransparency=1,Size=UDim2.fromOffset(960,166),Active=false},header)
+ local brandRail=new('Frame',{Name='BrandAccentRail',Position=UDim2.fromOffset(28,58),Size=UDim2.fromOffset(3,32),BackgroundColor3=white,BorderSizePixel=0,Active=false},header);round(brandRail,2)
+ local brandRule=new('Frame',{Name='BrandUnderline',Position=UDim2.fromOffset(48,105),Size=UDim2.fromOffset(176,1),BackgroundColor3=white,BorderSizePixel=0,Active=false},header)
+ new('UIGradient',{Transparency=NumberSequence.new(0,1)},brandRule)
+ local brandInk=new('UIGradient',{Rotation=0},brand)
+ local ring=new('Frame',{Name='EventStarRing',BackgroundTransparency=1,Position=UDim2.fromOffset(30,39),Size=UDim2.fromOffset(76,76),Active=false},ornaments);round(ring,40)
+ local ringEdge=stroke(ring);ringEdge.Thickness=1
+ local function segment(name,x,y,w,h,angle)
+  return new('Frame',{Name=name,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),Rotation=angle or 0,BackgroundColor3=white,BorderSizePixel=0,Active=false},ornaments)
+ end
+ local blueRules={segment('BlueRuleLeft',415,112,156,1),segment('BlueRuleRight',605,112,156,1)}
+ local blueGem=new('ImageLabel',{Name='BlueRuleStar',Image=emblem.Image,ImageRectSize=emblem.ImageRectSize,ImageRectOffset=emblem.ImageRectOffset,BackgroundTransparency=1,Position=UDim2.fromOffset(578,102),Size=UDim2.fromOffset(22,22),Active=false},ornaments)
+ local violetSwash={}
+ for i=1,48 do
+  local t=(i-1)/47;local x=44+t*500;local y=104+math.sin(t*math.pi*1.6)*8
+  violetSwash[i]=segment('VioletSwash',x,y,12,1.4,math.cos(t*math.pi*1.6)*5)
+ end
+ local violetStar=new('ImageLabel',{Name='VioletSignatureStar',Image=emblem.Image,ImageRectSize=emblem.ImageRectSize,ImageRectOffset=emblem.ImageRectOffset,BackgroundTransparency=1,Position=UDim2.fromOffset(72,95),Size=UDim2.fromOffset(18,18),Active=false},ornaments)
+ spaceArt.applyHeader=function(name)
+  local _,accent=palette()
+  local image=images[name]
+  spaceArt.image.Image=image or images.Space
+  spaceArt.image.ImageColor3=image and Color3.new(1,1,1)or accent:Lerp(white,.2)
+  local dedicated=image and name~='Space'
+  spaceArt.image.Size=dedicated and UDim2.fromOffset(960,320)or UDim2.fromOffset(960,387)
+  spaceArt.image.Position=UDim2.fromOffset(0,dedicated and -20 or -40)
+  spaceArt.image:SetAttribute('HeaderBaseY',dedicated and -20 or -40)
+  spaceArt.image:SetAttribute('HeaderTheme',name)
+  brand.Text='F Y R E L I T H';brand.Font=Enum.Font.GothamMedium;brand.TextSize=44
+  brand.Position=UDim2.fromOffset(106,42);brand.Size=UDim2.fromOffset(530,64);brand.TextXAlignment=Enum.TextXAlignment.Left
+  brand.TextStrokeColor3=accent;brand.TextStrokeTransparency=.88
+  emblem.Visible=true;emblem.Position=UDim2.fromOffset(28,42);emblem.Size=UDim2.fromOffset(64,64)
+  signature.Position=UDim2.fromOffset(110,106);signature.Size=UDim2.fromOffset(450,42);signature.TextSize=12;signature.TextXAlignment=Enum.TextXAlignment.Left
+  signature.Text='A  B R I G H T E R  T O M O R R O W\nI N  D A R K E R  S K I E S .'
+  ring.Visible=name=='Event Horizon';ringEdge.Color=accent
+  for _,line in ipairs(blueRules)do line.Visible=name=='Stardust Blue';line.BackgroundColor3=accent end
+  blueGem.Visible=name=='Stardust Blue';blueGem.ImageColor3=accent
+  for _,line in ipairs(violetSwash)do line.Visible=name=='Nebula Violet';line.BackgroundColor3=accent;line.BackgroundTransparency=.3 end
+  violetStar.Visible=name=='Nebula Violet';violetStar.ImageColor3=accent
+  if name=='Event Horizon'then
+   emblem.Position=UDim2.fromOffset(42,51);emblem.Size=UDim2.fromOffset(52,52)
+   brand.Position=UDim2.fromOffset(126,42);brand.TextSize=42
+   signature.Position=UDim2.fromOffset(128,104);signature.Size=UDim2.fromOffset(550,30);signature.TextSize=13
+   signature.Text='BEYOND LIMITS, ANOTHER TOMORROW.'
+  elseif name=='Nebula Violet'then
+   emblem.Visible=false;brand.Text='FYRELITH';brand.Font=Enum.Font.Antique;brand.TextSize=66
+   brand.Position=UDim2.fromOffset(42,32);brand.Size=UDim2.fromOffset(540,80)
+   signature.Position=UDim2.fromOffset(52,116);signature.Size=UDim2.fromOffset(500,28);signature.TextSize=14
+   signature.Text='P L A Y   B E Y O N D   L I M I T S'
+  elseif name=='Stardust Blue'then
+   emblem.Position=UDim2.fromOffset(568,12);emblem.Size=UDim2.fromOffset(42,42)
+   brand.Position=UDim2.fromOffset(304,46);brand.Size=UDim2.fromOffset(570,60);brand.TextSize=44;brand.TextXAlignment=Enum.TextXAlignment.Center
+   signature.Position=UDim2.fromOffset(320,118);signature.Size=UDim2.fromOffset(540,28);signature.TextSize=14;signature.TextXAlignment=Enum.TextXAlignment.Center
+   signature.Text='G A M E   U T I L I T Y'
+  end
+  -- Native text stays crisp at every window scale; decorative image logos are unused.
+  brand.Visible=true;brand.Text='FYRELITH';brand.Font=Enum.Font.GothamMedium;brand.TextSize=28
+  brand.Position=UDim2.fromOffset(48,55);brand.Size=UDim2.fromOffset(310,48);brand.TextXAlignment=Enum.TextXAlignment.Left
+  brand.TextColor3=white;brand.TextStrokeTransparency=1
+  brandInk.Color=ColorSequence.new(white,accent:Lerp(white,.55))
+  brandRail.BackgroundColor3=accent;brandRail.Visible=name=='Space';brandRule.Visible=false
+  brandRail.Position=UDim2.fromOffset(28,62);brandRail.Size=UDim2.fromOffset(2,32)
+  brandInk.Color=ColorSequence.new(accent:Lerp(white,.8),accent:Lerp(white,.8))
+  -- Crop uniformly rather than stretching the panoramic texture.
+  spaceArt.image.Size=UDim2.fromOffset(964,170)
+  spaceArt.image.Position=UDim2.fromOffset(-2,-2)
+  spaceArt.image.ScaleType=Enum.ScaleType.Crop
+  spaceArt.image.ImageTransparency=0;spaceArt.image.ImageColor3=white
+  spaceArt.image:SetAttribute('HeaderBaseY',-2)
+  spaceArt.shade.BackgroundTransparency=1
+  signature.Visible=false;emblem.Visible=false;ornaments.Visible=false
+ end
+ task.spawn(function()
+  local assets={};for _,asset in pairs(images)do if asset~=''then assets[#assets+1]=asset end end
+  pcall(function()game:GetService('ContentProvider'):PreloadAsync(assets)end)
+ end)
+end)()
+
+;(function()
+ local host=canvas.CrispContent.SidebarContent
+ host.Size=UDim2.fromOffset(936,100);sidebar.Size=host.Size
+ local more=host:FindFirstChild('More')if more then more.Visible=false end
+ local menu=canvas.CrispContent:FindFirstChild('MoreMenu')if menu then menu.Visible=false end
+ navs.Dungeon.button.Visible=false
+ for i,name in ipairs({'Overview','Main','Auto Play','Summon','Event','Macro','Dungeon','Misc','Webhook','Settings'})do
+  local n=navs[name];local row=math.floor((i-1)/5)
+  n.button.Parent=host;n.button.Visible=true;n.button.Position=UDim2.fromOffset(((i-1)%5)*188,row*50);n.button.Size=UDim2.fromOffset(182,44)
+  n.title.Text=name=='Overview'and'Main'or name=='Main'and'Auto Join'or name
+  n.title.TextSize=18;n.title.Position=UDim2.fromOffset(44,0);n.title.Size=UDim2.fromOffset(136,44)
+  for _,image in ipairs(n.button:GetChildren())do if image:IsA('ImageLabel')then image.Position=UDim2.fromOffset(16,11);image.Size=UDim2.fromOffset(22,22)end end
+ end
+ navIndicator.Size=UDim2.fromOffset(182,44);navIndicatorFill.Size=UDim2.fromOffset(182,44)
+ navIndicatorBar.Position=UDim2.fromOffset(12,41)
+ body.Position=UDim2.fromOffset(26,288);body.Size=UDim2.fromOffset(908,726)
+ for name,p in pairs(pages)do p.Size=UDim2.fromOffset(908,name=='Auto Play'and 726 or 660)end
+end)()
+refresh(); selectPage('Auto Play'); fit(); setOpen(true)
+
+end
+local playerGui=game.Players.LocalPlayer.PlayerGui
+for _,item in ipairs(playerGui:GetChildren())do if item:IsA('ScreenGui') and item.Name=='FyrelithUIOnly' then item:Destroy() end end
+createHost()
+if not fyOwnsExecution() then if fyExecution.Gui and fyExecution.Gui.Parent then fyExecution.Gui:Destroy()end return end
 local function createAutoJoin()
 local function waitForFyrelithGame()
  local player=game:GetService('Players').LocalPlayer
@@ -3989,7 +2287,6 @@ local function waitForFyrelithGame()
  end
 end
 waitForFyrelithGame()
-fyPartyHost.Install()
 
 local env=getgenv()
 env.FyrelithStartupError=nil
@@ -4330,7 +2627,6 @@ local function picker(title,x,y,options,current,selected)
    menuTween:Play()
   end
  end)
- Bridge:RegisterPicker(b,title,function()return value.Text end,options,function(entry)selected(entry);api.Refresh()end)
  return {Button=b,Value=value,Label=caption,Set=function(text,visible) value.Text=text b.Visible=visible~=false caption.Visible=visible~=false end}
 end
 
@@ -4343,7 +2639,6 @@ local function switch(name,title,subtitle,y,get,set,x)
  local knob=new('Frame',{Name='Knob',Position=UDim2.fromOffset(4,4),Size=UDim2.fromOffset(21,21),BackgroundColor3=white,BorderSizePixel=0,ZIndex=5},track) round(knob,11)
  local function paint() local on=get() tween(track,{BackgroundColor3=on and colors.accent or colors.line}) tween(knob,{Position=UDim2.fromOffset(on and 29 or 4,4)}) row:SetAttribute('Enabled',on) end
  connect(row.Activated,function() set(not get()) paint() local runtime=env.FyrelithRuntime if runtime and runtime.Alive and runtime.Save then runtime.Save() end end)
- Bridge:RegisterToggle(row,title,subtitle,get,function(value)set(value);paint();local runtime=env.FyrelithRuntime;if runtime and runtime.Save then runtime.Save()end end)
  table.insert(switchPainters,paint)
  paint()
  return paint
@@ -4409,7 +2704,6 @@ function api.Refresh()
 end
 
 local function invoke(name,...)
- local ready,reason=fyPartyHost.Ready();if not ready then error(reason,0)end
  local args=table.pack(...) local request={Name=name,Done=false}
  api.PendingRequest=request
  task.spawn(function() request.OK,request.Result=pcall(EP.invoke_server,name,table.unpack(args,1,args.n)) request.Done=true end)
@@ -4435,7 +2729,6 @@ local function member(room)
 end
 local lastSpecial=0
 function api.Join(modeOverride,expectedChallenge)
- local ready,reason=fyPartyHost.Ready();if not ready then report(reason);return end
  local joinMode=modeOverride or cfg.Mode
  local isStaged=joinMode=='Story' or joinMode=='Infinite' or joinMode=='Legend Stage' or joinMode=='Raid'
  if api.Busy or not api.Alive then return end
@@ -5296,10 +3589,6 @@ do
    end
    if motionEnabled() then menu.Size=UDim2.fromOffset(244,0) menu.GroupTransparency=1 game:GetService('TweenService'):Create(menu,TweenInfo.new(.26,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(244,height),GroupTransparency=0}):Play() end
   end)
-  Bridge:RegisterPicker(b,title,getValue,getOptions,function(entry)
-   assert(not a.Enabled and not a.Busy,'Pause Auto Summon before changing settings')
-   set(entry.id);a.Count=0;save();text.Text=getValue();if a.RefreshUI then a.RefreshUI()end
-  end)
   return b
  end
  local bannerButton=formPicker('Banner',50,bannerChoices,function() return config.Banner and bannerName(config.Banner) or 'No active banners' end,function(v) config.Banner=v if banners[v]._no_summon_ticket then config.Payment='banner' end end)
@@ -5481,13 +3770,12 @@ do
    if type(uuid)=='string' and not history.Seen[uuid] then
     local unit=S.session.collection:get_unit_by_uuid(uuid)
     local definition=unit and Units[unit.unit_id]
-    if definition and Bridge:IsRareSummon(definition.rarity) then
+    if definition and (definition.rarity=='Mythic' or definition.rarity=='Secret' or definition.rarity=='Exclusive') then
      history.Seen[uuid]=true
      local existing
      for i,row in ipairs(history.Rows) do if row.Id==unit.unit_id and row.Shiny==(unit.shiny==true) then existing=table.remove(history.Rows,i) break end end
      local record=existing or {Id=unit.unit_id,Name=definition.name or unit.unit_id,Rarity=definition.rarity,Shiny=unit.shiny==true,Count=0}
      record.Count+=1 table.insert(history.Rows,1,record)
-     pcall(Bridge.OnRareSummon,Bridge,record)
      if #history.Rows>50 then table.remove(history.Rows) end
     end
    end
@@ -5512,7 +3800,6 @@ do
  function a.Run()
   if a.Busy or not a.Enabled or not a.Alive then return end a.Busy=true
   while a.Enabled and a.Alive do
-   local ready,reason=fyPartyHost.Ready();if not ready then status.Text=reason;task.wait(.5);continue end
    local ok,err=pcall(function()
     local nextAllowed=math.max(a.NextAllowedAt or 0,(a.LastSummonAt or -math.huge)+a.MinInterval)
     while a.Enabled and a.Alive and os.clock()<nextAllowed do status.Text='Waiting for summon cooldown…' task.wait(.1) end
@@ -5766,8 +4053,6 @@ do
   local args=table.pack(...) local entry local recordingToken=m.Token local confirmed
   local buff=env.FyrelithAutoBuff
   local automaticBuff=buff and buff.RequestThreads and buff.RequestThreads[coroutine.running()]
-  local cycles=env.FyrelithUnitCycles
-  automaticBuff=automaticBuff or cycles and cycles.RequestThreads[coroutine.running()]
   if m.Alive and m.State=='Recording' and allowed[endpoint] and not automaticBuff then
    local ok,data=pcall(encode,args)
    if ok then
@@ -5847,7 +4132,7 @@ do
      -- retain the original spacing rather than burst all overdue requests.
      local due=step.Time
      while active() do
-      if m.State=='Playing'and fyPartyHost.Ready()then
+      if m.State=='Playing' then
        local timeReady=elapsed()>=due or step.Wave<wave() local waveReady=wave()>=step.Wave
        if (m.Config.Timing=='Time' and timeReady) or (m.Config.Timing=='Wave' and waveReady) or (m.Config.Timing=='Hybrid' and timeReady and waveReady) then break end
       end
@@ -5981,7 +4266,7 @@ do
   while m.Alive and gui.Parent do
    local current=wave()
    if Loader.IsLobby or api.MatchEnded or current==0 then actionDone=false end
-   if fyPartyHost.Ready()and m.Config.WaveActionEnabled and not Loader.IsLobby and not api.MatchEnded and current>0 and current>=(tonumber(m.Config.TargetWave) or 15) and not actionDone and not actionBusy then
+   if m.Config.WaveActionEnabled and not Loader.IsLobby and not api.MatchEnded and current>0 and current>=(tonumber(m.Config.TargetWave) or 15) and not actionDone and not actionBusy then
     actionDone=true actionBusy=true m.WaveActionStatus='Running'
     local units=workspace:FindFirstChild('_UNITS') local count=0
     if units then for _,unit in ipairs(units:GetChildren()) do
@@ -6052,7 +4337,7 @@ do
  end
  ui('DestinationCard').Size=UDim2.fromOffset(438,526)
  status.Position=UDim2.fromOffset(26,490)
- local paintRetry=switch('AutoRetry','Auto Retry','Replay this stage when the match ends.',442,function() return cfg.AutoRetry end,function(v)cfg.AutoRetry=v;local retry=env.FyrelithRetry;if retry then retry.Reset()end end)
+ local paintRetry=switch('AutoRetry','Auto Retry','Replay this stage when the match ends.',442,function() return cfg.AutoRetry end,function(v) cfg.AutoRetry=v end)
  paintRetry()
  root.Size=UDim2.fromOffset(908,1196) main.CanvasSize=UDim2.fromOffset(0,1196)
  -- Compact match controls in their own right-hand card.
@@ -6151,8 +4436,6 @@ do
 
  local lastResultClick=-math.huge local lastFinalClick=-math.huge local lastSkip=-math.huge
  local function clickResult(button)
-  local action=results and(button==results.ReturnLobby and'Return to Lobby'or(button==results.NextRetry or button==results.NextLevelButton)and'Retry / Next')
-  if action and not fyPartyHost.Check(true,action)then return false end
   if not button or not button.Visible or not button:IsA('GuiButton') or type(getconnections)~='function' then return false end
   local callbacks=getconnections(button.Activated) if #callbacks==0 then callbacks=getconnections(button.MouseButton1Click) end
   if #callbacks==0 then return false end
@@ -6233,7 +4516,6 @@ do
    local finished=resultOpen and results.Finished and results.Finished.Visible
    if resultOpen then ended=true api.MatchEnded=true finishRecording() local macro=env.FyrelithMacro if macro and macro.FinishPlayback then macro.FinishPlayback() end
    elseif ended then ended=false api.MatchEnded=false end
-   if not fyPartyHost.Ready()then return end
    local challenge=env.FyrelithAutoChallenge
    local smart=env.FyrelithAutoPlay
    local smartMatch=smart and smart.Alive and smart.WantsMatchControl and smart.WantsMatchControl()
@@ -6258,12 +4540,8 @@ do
       local overview=env.FyrelithGameReady.Services.GUIService.unit_overview_ui
       if overview and type(overview.hide)=='function' then pcall(overview.hide,overview) end
      end
-    elseif not (env.FyrelithSummer and env.FyrelithSummer.HandleResults(results)) and not (env.FyrelithDungeon and env.FyrelithDungeon.OwnsMatch()and not cfg.AutoRetry) and not (env.FyrelithMacro and env.FyrelithMacro.State=='Finishing') and os.clock()-lastFinalClick>=5 then
+    elseif not (env.FyrelithSummer and env.FyrelithSummer.HandleResults(results)) and not (env.FyrelithDungeon and env.FyrelithDungeon.OwnsMatch()) and not (env.FyrelithMacro and env.FyrelithMacro.State=='Finishing') and os.clock()-lastFinalClick>=5 then
      local level=Loader.LevelData or {} local victory=results.settings and results.settings.victory
-     if not fyPartyHost.Check(false,'Retry / Next')then return end
-     local waveLeave=env.FyrelithLeaveAtWave
-     local waveValue=workspace:FindFirstChild('_wave_num')
-     if waveLeave and waveLeave.Config.Enabled and(waveLeave.Pending or waveValue and waveValue.Value>=waveLeave.Config.Wave)then return end
      local target=cfg.AutoLeave and results.ReturnLobby or nil
      local challenge=env.FyrelithAutoChallenge
      local challengeReturn=challenge and challenge.Priority
@@ -6285,10 +4563,7 @@ do
        end
       end
      end
-     if not target and not challengeReturn and not portalSent and cfg.AutoRetry and env.FyrelithRetry then
-      if env.FyrelithRetry.Try(results)then lastFinalClick=os.clock();return end
-     end
-     if not target and not challengeReturn and not portalSent and (cfg.AutoRetry or smartMatch)then target=results.NextRetry end
+     if not target and not challengeReturn and not portalSent and (cfg.AutoRetry or smartMatch) then target=results.NextRetry end
      if not target and not portalSent and cfg.AutoLeave then target=results.ReturnLobby end
      if target and clickResult(target) then lastFinalClick=os.clock() nextClicked=true end
     end
@@ -6603,18 +4878,7 @@ task.spawn(function()
  local old=env.FyrelithAutoTrait if old and old.Stop then pcall(old.Stop) end
  local G=env.FyrelithGameReady.Services.GUIService local UI=G.trait_reroll_ui or {}
  local U=env.FyrelithGameReady.Services.UnitCollectionServiceClient
- local TraitData=Loader.load_data(script,'Traits')
- local Traits={}
- for id,definition in pairs(TraitData.info or TraitData)do
-  if type(definition)=='table' and definition.name then
-   local normalized=table.clone(definition)
-   local effects=TraitData.effects and TraitData.effects[id]
-   normalized.tiers=normalized.tiers or (effects and effects.tiers)
-   normalized.singular=normalized.tiers==nil
-   Traits[id]=normalized
-  end
- end
- local Items=Loader.load_data(script,'Items') local Units=Loader.load_data(script,'Units')
+ local Traits=Loader.load_data(script,'Traits') local Items=Loader.load_data(script,'Items') local Units=Loader.load_data(script,'Units')
  local Core=Loader.load_core_service(script,'UnitServiceCore') local H=game:GetService('HttpService')
  local a={Alive=true,Enabled=false,Config={Items={},Targets={}},Token=0,ConfirmedRolls=0} env.FyrelithAutoTrait=a
  local file='FyrelithTrait_'..player.UserId..'_'..game.GameId..'.json'
@@ -6859,7 +5123,6 @@ task.spawn(function()
  end)
  local function run(token)
   while a.Alive and a.Enabled and token==a.Token do
-   local ready,reason=fyPartyHost.Ready();if not ready then report(reason);task.wait(.5);continue end
    if not Loader.IsLobby then report('Auto Reroll active • waiting for lobby') task.wait(.25) continue end
    local current=unit() if not current then stop('Selected unit is unavailable') return end
    refreshUnit()
@@ -7043,7 +5306,7 @@ task.spawn(function()
   phase.TextColor3=a.Enabled and colors.accent or targetFound(u) and Color3.fromRGB(102,222,169) or muted
   for key,value in pairs(metricValues) do value.Text=tostring(snapshot[key] or 0) end
   footer.Text=snapshot.Legacy>0 and ('LEGACY REMNANTS '..snapshot.Legacy..'  •  COUNTS VERIFIED LIVE') or 'LIVE INVENTORY  •  TARGET-AWARE STOP'
-  -- No legacy portrait rendering in the callback model.
+  paintPortrait(u) paintTraitIcons(u)
  end
 -- A readable portrait, status ribbon and inventory tiles share one visual rhythm.
 do
@@ -7399,6 +5662,27 @@ do
   end end)
   m.RefreshActionsUI()
  end
+ -- Shared visual treatment, applied once to existing and late-loading panels.
+ do
+  local panelNames={DestinationCard=true,MatchControlsCard=true,TeamSettingsCard=true,AutoRedeemCodes=true,AutoBuyGoldShop=true,AutoClaimCard=true,AutoSummon=true,AutoTraitCard=true,BannerUnitPreview=true,PlayerProfile=true,CurrentMap=true,FPSCard=true,PingCard=true}
+  local function polish(item)
+   if item:IsA('Frame') and (panelNames[item.Name] or item.Name:match('Card$') or item.Name=='AutoPlayControls' or item.Name=='AutoPlanControls' or item.Name=='SavedMacrosCard') then
+    if item:FindFirstChild('SurfaceFinish') then return end
+    item.BackgroundTransparency=.06
+    local stroke=item:FindFirstChildOfClass('UIStroke') if stroke then stroke.Transparency=.66 stroke.Thickness=1 end
+    local corner=item:FindFirstChildOfClass('UICorner') if corner then corner.CornerRadius=UDim.new(0,12) end
+    new('UIGradient',{Name='SurfaceFinish',Rotation=115,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(255,255,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(185,185,185))})},item)
+    local rail=new('Frame',{Name='AccentRail',Position=UDim2.fromOffset(16,0),Size=UDim2.new(1,-32,0,1),BorderSizePixel=0,BackgroundTransparency=.4,Active=false,ZIndex=item.ZIndex+1},item)
+    bind(rail,'BackgroundColor3','accent')
+    new('UIGradient',{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.25,.1),NumberSequenceKeypoint.new(.75,.1),NumberSequenceKeypoint.new(1,1)})},rail)
+   elseif item:IsA('TextButton') and item:GetAttribute('Primary') then
+    local gradient=item:FindFirstChild('ButtonFinish')
+    if not gradient then new('UIGradient',{Name='ButtonFinish',Rotation=90,Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(185,185,185))},item) end
+   end
+  end
+  for _,item in ipairs(gui:QueryDescendants('Frame, TextButton')) do polish(item) end
+  connect(gui.DescendantAdded,function(item) task.defer(function() if item.Parent then polish(item) end end) end)
+ end
  local routed={'Auto Play','Dungeon','Macro','Summon','Event','Misc','Webhook'}
  local function sizePages()
   for _,name in ipairs(routed) do
@@ -7409,6 +5693,21 @@ do
    page.CanvasSize=UDim2.fromOffset(0,bottom+16)
   end
  end
+ local function typography(item)
+  if item:IsA('TextLabel') or item:IsA('TextButton') or item:IsA('TextBox') then
+   if item.Font==Enum.Font.Gotham then item.Font=Enum.Font.GothamMedium end
+   local inEditor=item:FindFirstAncestor('TeamUnitEditor')~=nil
+   local minimum=inEditor and 18 or 17
+   local rowHeight=item.Size.Y.Offset
+   if item.Size.Y.Scale==0 and rowHeight>0 then minimum=math.min(minimum,math.max(14,rowHeight-2))end
+   if not item.TextScaled then item.TextSize=math.max(item.TextSize,minimum)end
+   if item:IsA('TextBox')then item.PlaceholderColor3=Color3.fromRGB(187,197,215)end
+   if item.TextTransparency>0 and item.TextTransparency<.8 then item.TextTransparency=0 end
+   item.TextStrokeTransparency=1
+  end
+ end
+ for _,item in ipairs(gui:QueryDescendants('TextLabel, TextButton, TextBox')) do typography(item) end
+ connect(gui.DescendantAdded,function(item) task.defer(function() if item.Parent then typography(item) end end) end)
  sizePages()
  task.spawn(function() while api.Alive and gui.Parent do sizePages() task.wait(.5) end end)
 end
@@ -7479,22 +5778,15 @@ do
  end
  local queue=queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
  if type(queue)=='function' and runtime.ScriptSaved then
-  if env.FyrelithDefaultTeleportQueuedJob~=game.JobId then
+  if not env.FyrelithDefaultTeleportQueued then
    local ok,err=pcall(queue,[=[
-if not game:IsLoaded()then game.Loaded:Wait()end
-local players=game:GetService('Players')
-while not players.LocalPlayer do task.wait(.1)end
-players.LocalPlayer:WaitForChild('PlayerGui')
-local execution=getgenv().FyrelithAutoExecJob
-if execution==game.JobId then return end
-getgenv().FyrelithAutoExecJob=game.JobId
-local source=readfile('.FYRELITH-Default-20261104/Runtime.luau')
+local source=readfile('.FyrelithDefaultCache/FyrelithRuntime.luau')
 getgenv().FyrelithScriptSource=source
 local run,err=loadstring(source)
 if run then run() else warn('Fyrelith: '..tostring(err)) end
 ]=])
    runtime.AutoExec=ok runtime.QueueError=not ok and tostring(err) or nil
-   if ok then env.FyrelithDefaultTeleportQueued=true;env.FyrelithDefaultTeleportQueuedJob=game.JobId end
+   if ok then env.FyrelithDefaultTeleportQueued=true end
   else runtime.AutoExec=true end
  end
  runtime.Connection=player.OnTeleport:Connect(function() runtime.Save() end)
@@ -7517,6 +5809,439 @@ end
 
 
 
+
+
+
+-- Black-screen observatory: native 2D resource icons remain visible with world rendering off.
+do
+ local previous=env.FyrelithBlackScreen
+ if previous and previous.Stop then pcall(previous.Stop) end
+ local run=game:GetService('RunService')
+ local G=env.FyrelithGameReady.Services.GUIService
+ local U=env.FyrelithGameReady.Services.UnitCollectionServiceClient
+ local settings=Loader.load_data(script,'GameplaySettings')
+ local feature={Alive=true,Enabled=false,RenderingOff=false,BootReady=true,Token=0,Tiles={},Baseline={},Started=os.clock(),Connections={}}
+ env.FyrelithBlackScreen=feature
+ local function on(signal,fn) local c=signal:Connect(fn) table.insert(feature.Connections,c) return c end
+ local function anim(obj,goals,duration)
+  if preferences and (preferences:GetAttribute('ReduceMotion') or preferences:GetAttribute('Smooth')==false) then for k,v in pairs(goals) do obj[k]=v end return end
+  game:GetService('TweenService'):Create(obj,TweenInfo.new(duration or .28,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),goals):Play()
+ end
+ local function number(value)
+  local n=math.floor(tonumber(value) or 0) local sign=n<0 and '-' or ''
+  local text=tostring(math.abs(n)) local out=text:reverse():gsub('(%d%d%d)','%1,'):reverse():gsub('^,','')
+  return sign..out
+ end
+ local overlay=new('ScreenGui',{Name='FyrelithBlackScreen',Enabled=false,ResetOnSpawn=false,IgnoreGuiInset=true,ScreenInsets=Enum.ScreenInsets.None,ClipToDeviceSafeArea=false,DisplayOrder=2147483646,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},player.PlayerGui)
+ local black=new('Frame',{Name='BlackBackdrop',Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(),BackgroundTransparency=1,BorderSizePixel=0,Active=true},overlay)
+ local board=new('CanvasGroup',{Name='Observatory',AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(960,620),BackgroundTransparency=1,GroupTransparency=1,ZIndex=2},black)
+ local iconSource=gui:FindFirstChild('EventHorizon',true)
+ local emblem=new('ImageLabel',{Name='BlackHole',Size=UDim2.fromOffset(46,46),BackgroundTransparency=1,Image=iconSource and (iconSource:IsA('ImageLabel') or iconSource:IsA('ImageButton')) and iconSource.Image or '',ScaleType=Enum.ScaleType.Fit},board)
+ local title=label(board,'Heading','VOID OBSERVATORY',58,2,550,34,26,true)
+ title.TextScaled=true new('UITextSizeConstraint',{MinTextSize=14,MaxTextSize=26},title)
+ local subtitle=label(board,'LiveSubtitle','3D PAUSED  /  LIVE BALANCES',58,38,550,22,11,true) subtitle.TextColor3=muted
+ local live=new('Frame',{Position=UDim2.fromOffset(59,66),Size=UDim2.fromOffset(4,4),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(103,225,172)},board) round(live,4)
+ local session=label(board,'Session','SESSION 00:00',70,58,370,20,11) session.TextColor3=muted
+ local function action(name,text,x,fn)
+  local b=new('TextButton',{Name=name,Text=text,Position=UDim2.fromOffset(x,12),Size=UDim2.fromOffset(116,36),BackgroundColor3=Color3.fromRGB(19,22,32),BackgroundTransparency=.1,TextColor3=white,TextSize=13,Font=Enum.Font.GothamMedium,AutoButtonColor=false,BorderSizePixel=0},board) round(b,11)
+  local edge=new('UIStroke',{Color=Color3.fromRGB(130,116,176),Transparency=.7,Thickness=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},b)
+  on(b.MouseEnter,function() anim(b,{BackgroundColor3=Color3.fromRGB(42,36,63)},.2) anim(edge,{Transparency=.3},.2) end)
+  on(b.MouseLeave,function() anim(b,{BackgroundColor3=Color3.fromRGB(19,22,32)},.25) anim(edge,{Transparency=.7},.25) end)
+  on(b.Activated,fn) return b
+ end
+ local controls=action('Controls','Controls',704,function() local c=gui:FindFirstChild('SetWindowOpen') if c then c:Invoke(true) end end)
+ local resume=action('Resume3D','Resume 3D',832,function() if feature.SetEnabled then feature.SetEnabled(false,true) end end)
+ local divider=new('Frame',{Name='PhotonLine',Position=UDim2.fromOffset(0,88),Size=UDim2.new(1,0,0,1),BackgroundColor3=Color3.fromRGB(191,174,255),BorderSizePixel=0,BackgroundTransparency=.5},board)
+ local glint=new('UIGradient',{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.3,.4),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(.7,.4),NumberSequenceKeypoint.new(1,1)})},divider)
+ local cells=new('ScrollingFrame',{Name='Balances',Position=UDim2.fromOffset(0,104),Size=UDim2.new(1,0,1,-192),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=Color3.fromRGB(160,142,218),CanvasSize=UDim2.new(),ClipsDescendants=true,ScrollingDirection=Enum.ScrollingDirection.Y},board)
+ local footer=new('Frame',{Name='LiveRound',Size=UDim2.new(1,0,0,76),BackgroundColor3=Color3.fromRGB(9,11,17),BorderSizePixel=0},board) round(footer,12)
+ local roundText=label(footer,'Round','Waiting for round data',16,8,700,25,15,true)
+ local automationText=label(footer,'Automation','',16,35,700,22,12) automationText.TextColor3=muted
+ local afkText=label(footer,'AntiAFK','',16,56,700,16,10) afkText.TextColor3=Color3.fromRGB(103,225,172)
+ local connectionText=label(footer,'Connection','',760,10,180,22,12) connectionText.TextXAlignment=Enum.TextXAlignment.Right connectionText.TextColor3=muted
+ local entries={} local entryById={} local nativeIcons={}
+ local resourceFolder=G.get_resource_folder('Gems').Parent
+ local function resourceIcon(id)
+  local folder=resourceFolder:FindFirstChild(id) local icon=folder and folder:FindFirstChild('Icon')
+  return icon and icon:IsA('ImageLabel') and icon.Image~='' and icon or nil
+ end
+ local function add(id,name,icon,getter,primary)
+  if entryById[id] or not icon then return end
+  local entry={Id=id,Name=name,Icon=icon,Get=getter,Primary=primary}
+  entryById[id]=entry table.insert(entries,entry)
+ end
+ local function profile() return U.session and U.session.profile_data end
+ local function liveBalance(name,fallback)
+  local stats=player:FindFirstChild('_stats') local value=stats and stats:FindFirstChild(name)
+  if value and value:IsA('ValueBase') and tonumber(value.Value) then return tonumber(value.Value) end
+  return fallback()
+ end
+ feature.ReadLiveBalance=liveBalance
+ add('gems','Gems',resourceIcon('Gems'),function() return liveBalance('gem_amount',function() local p=profile() return p and tonumber(p.gem_amount) end) end,true)
+ add('gold','Gold',resourceIcon('Gold'),function() return liveBalance('gold_amount',function() local p=profile() return p and tonumber(p.gold_amount) end) end,true)
+ local names={GemsLegacy='Legacy Gems',AprilCoins='April Coins',HolidayStars='Holiday Stars',SummerPearls='Summer Pearls'}
+ local function discover()
+  local p=profile() local resources=p and p.resources or {}
+  local candidates={}
+  for id,value in pairs(resources) do if type(id)=='string' and id:sub(1,1)~='_' and (tonumber(value) or 0)>0 then candidates[id]=true end end
+  for id,active in pairs(settings.ACTIVE_RESOURCES or {}) do if active and type(id)=='string' and id:sub(1,1)~='_' then candidates[id]=true end end
+  local ids={} for id in pairs(candidates) do table.insert(ids,id) end table.sort(ids)
+  for _,id in ipairs(ids) do
+   add('resource:'..id,names[id] or id:gsub('(%l)(%u)','%1 %2'),resourceIcon(id),function() return liveBalance('_resource'..id,function() local p=profile() return p and p.resources and tonumber(p.resources[id] or 0) end) end)
+  end
+ end
+ discover()
+ add('rerolls','Reroll Tokens',resourceIcon('_Trait'),function() return liveBalance('trait_reroll_tokens',function() local p=profile() return p and tonumber(p.trait_reroll_tokens or 0) end) end)
+ for _,d in ipairs({{'star_remnant','Star Remnant'},{'star_remnant_limited','Limited Remnant'}}) do
+  local id,name=d[1],d[2]
+  local ok,frame=pcall(G.make_item_frame,id)
+  if ok and frame then
+   local image=frame:FindFirstChild('star_remnant',true)
+   if image and image:IsA('ImageLabel') and image.Image~='' then
+    nativeIcons[id]=image:Clone() nativeIcons[id].Parent=nil
+    if id=='star_remnant_limited' then local badge=frame:FindFirstChild('limited',true) if badge and badge:IsA('ImageLabel') then nativeIcons[id..':badge']=badge:Clone() nativeIcons[id..':badge'].Parent=nil end end
+    add(id,name,nativeIcons[id],function() local inventory=U.session and U.session.inventory return inventory and inventory:get_number_of_owned_item(id) end)
+   end
+   frame:Destroy()
+  end
+ end
+ local function tile(entry)
+  local frame=new('Frame',{Name='Balance_'..entry.Id,BackgroundColor3=Color3.fromRGB(12,14,21),BackgroundTransparency=.03,BorderSizePixel=0},cells) round(frame,14)
+  local edge=new('UIStroke',{Color=Color3.fromRGB(116,106,150),Transparency=.74,Thickness=1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},frame)
+  new('UIGradient',{Rotation=115,Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(170,176,194))},frame)
+  local icon=entry.Icon:Clone() icon.Name='ItemIcon' icon.Parent=frame icon.Position=UDim2.fromOffset(16,17) icon.Size=UDim2.fromOffset(34,34) icon.AnchorPoint=Vector2.zero icon.Rotation=0 icon.BackgroundTransparency=1 icon.Visible=true icon.Active=false icon.ScaleType=Enum.ScaleType.Fit icon.ZIndex=2
+  if nativeIcons[entry.Id..':badge'] then local badge=nativeIcons[entry.Id..':badge']:Clone() badge.Name='LimitedBadge' badge.Parent=frame badge.AnchorPoint=Vector2.zero badge.Position=icon.Position-UDim2.fromOffset(2,2) badge.Size=UDim2.fromOffset(12,12) badge.Rotation=0 badge.BackgroundTransparency=1 badge.Visible=true badge.Active=false badge.ScaleType=Enum.ScaleType.Fit badge.ZIndex=3 end
+  local name=label(frame,'Name',entry.Name,64,16,200,20,13,true) name.TextColor3=muted
+  local value=label(frame,'Amount','—',64,39,200,38,entry.Primary and 30 or 24,true) value.TextScaled=true new('UITextSizeConstraint',{MinTextSize=16,MaxTextSize=entry.Primary and 30 or 24},value)
+  local count=new('NumberValue',{Value=0},frame)
+  on(count.Changed,function(v) value.Text=number(v) end)
+  feature.Tiles[entry.Id]={Frame=frame,Name=name,Value=value,Count=count,Edge=edge,Entry=entry}
+ end
+ local function layout(viewportOverride)
+  if not feature.Alive then return end
+  local viewport=typeof(viewportOverride)=='Vector2' and viewportOverride or overlay.AbsoluteSize
+  local width=math.max(240,math.min(960,viewport.X-40))
+  local compact=width<620 local header=compact and 128 or 96
+  local columns=width>=820 and 3 or width>=520 and 2 or 1
+  local primaryColumns=width>=520 and 2 or 1
+  local primaryCount=0 for _,entry in ipairs(entries) do if entry.Primary then primaryCount+=1 end end
+  local naturalHeight=header+116+math.ceil(primaryCount/primaryColumns)*128+math.ceil((#entries-primaryCount)/columns)*116
+  local height=math.max(240,math.min(naturalHeight,viewport.Y-112))
+  board.Size=UDim2.fromOffset(width,height)
+  title.Size=UDim2.fromOffset(compact and width-58 or width-338,34) title.TextSize=compact and 20 or 26
+  subtitle.Size=UDim2.fromOffset(compact and width-58 or width-338,20) subtitle.TextSize=compact and 10 or 11
+  subtitle.Text=width<440 and '3D PAUSED  /  LIVE' or '3D PAUSED  /  LIVE BALANCES'
+  controls.Position=UDim2.fromOffset(compact and 0 or width-248,compact and 85 or 12)
+  resume.Position=UDim2.fromOffset(compact and (width+12)/2 or width-120,compact and 85 or 12)
+  controls.Size=UDim2.fromOffset(compact and (width-12)/2 or 116,32) resume.Size=controls.Size
+  divider.Position=UDim2.fromOffset(0,header)
+  cells.Position=UDim2.fromOffset(0,header+16) cells.Size=UDim2.fromOffset(width,height-header-108)
+  footer.Position=UDim2.fromOffset(0,height-76)
+  roundText.Size=UDim2.fromOffset(math.max(100,width-(width<520 and 140 or 190)),25) roundText.TextSize=width<520 and 13 or 15
+  automationText.Size=UDim2.fromOffset(width-32,22) afkText.Size=UDim2.fromOffset(width-32,16)
+  connectionText.Position=UDim2.fromOffset(width-(width<520 and 116 or 170),10) connectionText.Size=UDim2.fromOffset(width<520 and 100 or 154,22)
+  local y=4 local primary={}
+  for _,entry in ipairs(entries) do if not feature.Tiles[entry.Id] then tile(entry) end if entry.Primary then table.insert(primary,entry) end end
+  for i,entry in ipairs(primary) do
+   local t=feature.Tiles[entry.Id] local w=(width-8-(primaryColumns-1)*12)/primaryColumns
+   t.Frame.Position=UDim2.fromOffset(4+((i-1)%primaryColumns)*(w+12),y+math.floor((i-1)/primaryColumns)*128) t.Frame.Size=UDim2.fromOffset(w,116)
+  end
+  y+=math.ceil(#primary/primaryColumns)*128+4
+  local index=0
+  for _,entry in ipairs(entries) do
+   local t=feature.Tiles[entry.Id]
+   if not entry.Primary then
+    local w=(width-8-(columns-1)*12)/columns
+    t.Frame.Position=UDim2.fromOffset(4+(index%columns)*(w+12),y+math.floor(index/columns)*116) t.Frame.Size=UDim2.fromOffset(w,104) index+=1
+   end
+   t.Name.Size=UDim2.new(1,-78,0,20) t.Value.Size=UDim2.new(1,-78,0,38)
+  end
+  cells.CanvasSize=UDim2.fromOffset(0,y+math.ceil(index/columns)*116+4)
+ end
+ -- Keep the match stopwatch independent of showing/hiding the observatory.
+ local timer=env.FyrelithRoundTimer
+ if not timer or timer.Job~=game.JobId then
+  local clock=env.FyrelithMatchClock
+  timer={Job=game.JobId,Start=clock and clock.Known and clock.Start or nil}
+  env.FyrelithRoundTimer=timer
+ end
+ feature.Timer=timer
+ local function resetTimer() timer.Start=nil timer.Finished=nil timer.Final=nil timer.Unknown=false end
+ local function startTimer()
+  resetTimer() timer.Start=os.clock()
+ end
+ local started=workspace:FindFirstChild('_waves_started')
+ if started then
+  on(started.Changed,function(value) if value then startTimer() else resetTimer() end end)
+  if not started.Value then resetTimer() elseif not timer.Start then timer.Unknown=true end
+ end
+ local dataFolder=workspace:FindFirstChild('_DATA')
+ local ended=dataFolder and dataFolder:FindFirstChild('GameFinished')
+ local function finishTimer()
+  if timer.Finished then return end
+  timer.Finished=os.clock()
+  if timer.Start then timer.Final=math.max(0,timer.Finished-timer.Start) end
+ end
+ if ended then on(ended.Changed,function(value) if value then finishTimer() end end) if ended.Value then finishTimer() end end
+ function feature.RoundElapsed()
+  if Loader.IsLobby then return nil,'Lobby' end
+  if ended and ended.Value then
+   local results=G.results_ui local stats=results and results.settings and results.settings.stats
+   if stats and tonumber(stats.time_taken) then timer.Final=math.max(0,tonumber(stats.time_taken)) end
+   return timer.Final,'Finished'
+  end
+  if not started or not started.Value then return 0,'Waiting for Start' end
+  if timer.Start then return math.max(0,os.clock()-timer.Start),'Playing' end
+  return nil,'Start time unavailable'
+ end
+ local function refresh()
+  if not feature.Alive then return end
+  for _,entry in ipairs(entries) do
+   local t=feature.Tiles[entry.Id] local ok,value=pcall(entry.Get)
+   if t and ok and type(value)=='number' then
+    if feature.Baseline[entry.Id]==nil then feature.Baseline[entry.Id]=value end
+    if t.Last~=value then
+     if t.Last==nil then t.Count.Value=value t.Value.Text=number(value) else anim(t.Count,{Value=value},.45) t.Edge.Transparency=.28 anim(t.Edge,{Transparency=.74},.7) end
+     t.Last=value
+    end
+   elseif t then t.Value.Text='—' end
+  end
+  local elapsed,timerState=feature.RoundElapsed()
+  if type(elapsed)=='number' then
+   local seconds=math.floor(elapsed)
+   local formatted=seconds>=3600 and string.format('%02d:%02d:%02d',math.floor(seconds/3600),math.floor(seconds/60)%60,seconds%60) or string.format('%02d:%02d',math.floor(seconds/60),seconds%60)
+   session.Text=(timerState=='Finished' and 'FINISHED  ' or 'MATCH TIME  ')..formatted
+  else session.Text=timerState end
+  if timerState=='Waiting for Start' then session.Text='WAITING FOR START  00:00' end
+  local wave=workspace:FindFirstChild('_wave_num') local w=wave and tonumber(wave.Value) or 0
+  local data=Loader.LevelData local id=type(data)=='table' and (data.id or data.level_id) or type(data)=='string' and data or ''
+  roundText.Text=Loader.IsLobby and 'Lobby  ·  Ready' or ((Levels[id] and Levels[id].name or 'Match')..'  ·  Wave '..tostring(w))
+  local macro=env.FyrelithMacro
+  automationText.Text=macro and macro.State~='Idle' and ('Macro '..macro.State..'  ·  '..tostring(macro.Index or 0)..' / '..#(macro.Steps or {})..' actions') or ('Auto Join '..(api.Enabled and 'On' or 'Off')..'  ·  Macro '..(macro and macro.Config.PlayRequested and 'Armed' or 'Idle'))
+  afkText.Text=env.FyrelithAntiAFK and env.FyrelithAntiAFK.Alive and (env.FyrelithAntiAFK.LastError and 'ANTI-AFK  ·  INPUT FAILED' or 'ANTI-AFK  ·  ACTIVE') or ''
+  local ok,ping=pcall(function() return game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue() end)
+  connectionText.Text=ok and type(ping)=='number' and tostring(math.floor(ping+.5))..' ms  ·  LIVE' or 'LIVE DATA'
+  local recovery=env.FyrelithIdleRecovery
+  if recovery and recovery.Pending then
+   automationText.Text='AFK recovery  ·  '..recovery.Status..'  ·  Attempt '..recovery.Attempts..' / 4'
+   connectionText.Text='RECONNECTING'
+  end
+ end
+ feature.Refresh=refresh
+ local refreshQueued=false
+ local function scheduleLiveRefresh()
+  if not feature.Enabled or refreshQueued then return end refreshQueued=true
+  task.defer(function()
+   refreshQueued=false if not feature.Alive then return end
+   local ok,err=pcall(refresh) feature.DataError=not ok and tostring(err) or nil
+  end)
+ end
+ local watchedStats=setmetatable({},{__mode='k'})
+ local function watchStats(stats)
+  local function watch(value)
+   if not value:IsA('ValueBase') or watchedStats[value] then return end
+   if value.Name=='gem_amount' or value.Name=='gold_amount' or value.Name=='trait_reroll_tokens' or value.Name:sub(1,9)=='_resource' then
+    watchedStats[value]=true on(value.Changed,scheduleLiveRefresh)
+   end
+  end
+  for _,value in ipairs(stats:GetChildren()) do watch(value) end
+  on(stats.ChildAdded,watch)
+ end
+ local stats=player:FindFirstChild('_stats') if stats then watchStats(stats) end
+ on(player.ChildAdded,function(child) if child.Name=='_stats' then watchStats(child) end end)
+;(function()
+ local previous=env.FyrelithPrivacy
+ if previous and previous.Stop then previous.Stop()end
+ local feature={Alive=true,Enabled=false,Alias='Fyrelith',Watched={},Connections={}}
+ env.FyrelithPrivacy=feature
+ local H=game:GetService('HttpService')
+ local file='FyrelithPrivacy_'..player.UserId..'_'..game.GameId..'.json'
+ pcall(function()local saved=H:JSONDecode(readfile(file));feature.Enabled=saved.HideRealName==true end)
+ local names={player.Name}
+ if player.DisplayName~=player.Name then names[#names+1]=player.DisplayName end
+ table.sort(names,function(a,b)return #a>#b end)
+ function feature.Mask(text)
+  -- Replace complete names only, preserving surrounding text and RichText tags.
+  for _,name in ipairs(names)do
+   if name~='' and name~=feature.Alias then
+    local escaped=name:gsub('([^%w])','%%%1')
+    text=text:gsub('%f[%w_]'..escaped..'%f[^%w_]',function()return feature.Alias end)
+   end
+  end
+  return text
+ end
+ local function update(object,record)
+  if not feature.Alive or not feature.Enabled or record.Writing or not object.Parent then return end
+  local current=object[record.Property]
+  local masked=feature.Mask(current)
+  if masked~=current then
+   record.Original=current;record.Masked=masked;record.Writing=true
+   object[record.Property]=masked;record.Writing=false
+  elseif current~=record.Masked then record.Original=nil;record.Masked=nil end
+ end
+ local function watch(object)
+  if not feature.Enabled or feature.Watched[object]then return end
+  local property
+  if object:IsA('TextLabel')or object:IsA('TextButton')then property='Text'
+  elseif object:IsA('Humanoid')and player.Character and object:IsDescendantOf(player.Character)then property='DisplayName' end
+  if not property then return end
+  local record={Property=property}
+  feature.Watched[object]=record
+  record.Changed=object:GetPropertyChangedSignal(property):Connect(function()update(object,record)end)
+  record.Destroyed=object.Destroying:Connect(function()
+   record.Changed:Disconnect();record.Destroyed:Disconnect();feature.Watched[object]=nil
+  end)
+  update(object,record)
+ end
+ local function restore()
+  for object,record in pairs(feature.Watched)do
+   record.Changed:Disconnect();record.Destroyed:Disconnect()
+   pcall(function()if object.Parent and record.Original and object[record.Property]==record.Masked then object[record.Property]=record.Original end end)
+  end
+  table.clear(feature.Watched)
+  for _,connection in ipairs(feature.Connections)do connection:Disconnect()end
+  table.clear(feature.Connections)
+ end
+ local function start()
+  for _,container in ipairs({player.PlayerGui,game:GetService('CoreGui'),workspace})do
+   pcall(function()
+    feature.Connections[#feature.Connections+1]=container.DescendantAdded:Connect(watch)
+    for _,class in ipairs({'TextLabel','TextButton'})do for _,object in ipairs(container:QueryDescendants(class))do watch(object)end end
+   end)
+  end
+  local humanoid=player.Character and player.Character:FindFirstChildOfClass('Humanoid')
+  if humanoid then watch(humanoid)end
+  -- Character parenting can precede LocalPlayer.Character on a server transfer.
+  local function characterReady(character)
+   task.spawn(function()
+    local h=character:WaitForChild('Humanoid',15)
+    if feature.Enabled and feature.Alive and h and player.Character==character then watch(h);local record=feature.Watched[h];if record then update(h,record)end end
+   end)
+  end
+  feature.Connections[#feature.Connections+1]=player.CharacterAdded:Connect(characterReady)
+  if player.Character then characterReady(player.Character)end
+  local token={};feature.StartToken=token
+  task.spawn(function()
+   -- Native chat, player lists and account panels may rebuild after profile load.
+   for _,delay in ipairs({1,2,5,8})do
+    task.wait(delay)
+    if not feature.Alive or not feature.Enabled or feature.StartToken~=token then return end
+    for _,container in ipairs({player.PlayerGui,game:GetService('CoreGui'),workspace})do
+     pcall(function()for _,class in ipairs({'TextLabel','TextButton'})do for _,object in ipairs(container:QueryDescendants(class))do watch(object)end end end)
+    end
+    for object,record in pairs(feature.Watched)do update(object,record)end
+    if player.Character then characterReady(player.Character)end
+   end
+  end)
+ end
+ function feature.SetEnabled(value,persist)
+  feature.Enabled=value==true
+  restore()
+  if feature.Enabled then start()end
+  if persist~=false then pcall(function()writefile(file,H:JSONEncode({HideRealName=feature.Enabled}))end)end
+ end
+ function feature.Stop()
+  feature.Enabled=false;restore();feature.Alive=false
+ end
+ local panel=card('PrivacyCard',462,246,438,102);panel.Parent=main.Parent.Misc
+ label(panel,'Title','Privacy',18,12,402,28,18,true)
+ switch('HideRealName','Hide Real Name','',0,function()return feature.Enabled end,function(value)feature.SetEnabled(value)end)
+ local toggle=ui('HideRealName');toggle.Parent=panel;toggle.Position=UDim2.fromOffset(18,55)
+ task.defer(function()
+  if not panel.Parent then return end
+  local bottom=234
+  for _,item in ipairs(panel.Parent:GetChildren())do
+   if item~=panel and item:IsA('GuiObject')and item.Position.X.Offset>=450 then bottom=math.max(bottom,item.Position.Y.Offset+item.Size.Y.Offset)end
+  end
+  panel.Position=UDim2.fromOffset(462,bottom+12)
+  local height=panel.Position.Y.Offset+panel.Size.Y.Offset+16
+  panel.Parent.CanvasSize=UDim2.fromOffset(0,math.max(panel.Parent.CanvasSize.Y.Offset,height))
+ end)
+ connect(gui.Destroying,feature.Stop)
+ feature.SetEnabled(feature.Enabled,false)
+end)()
+
+ local panel=card('BlackScreenCard',462,92,438,142) panel.Parent=main.Parent.Misc
+ label(panel,'Title','Black Screen',18,12,402,28,18,true)
+ local status=label(panel,'Status','3D rendering is on',18,101,402,24,12) status.TextColor3=muted
+ local paint=switch('Disable3DRendering','Disable 3D Rendering','',0,function() return feature.Enabled end,function(value) feature.SetEnabled(value) end)
+ local toggle=ui('Disable3DRendering') toggle.Parent=panel toggle.Position=UDim2.fromOffset(18,55)
+ function feature.Reapply()
+  if not feature.Alive or not feature.Enabled then return false end
+  local ok,err=pcall(function() run:Set3dRenderingEnabled(false) end)
+  if ok then
+   feature.RenderingOff=true feature.LastRenderSync=os.clock() feature.ReapplyCount=(feature.ReapplyCount or 0)+1 feature.RenderError=nil
+   overlay.Enabled=true
+  else feature.RenderError=tostring(err) end
+  return ok
+ end
+ function feature.SetEnabled(value,keepControls)
+  if not feature.Alive then return false end
+  value=value==true feature.Token+=1 local token=feature.Token
+  if value then
+   feature.Enabled=true feature.Baseline={} feature.Started=os.clock()
+   layout() refresh() overlay.Enabled=true
+   anim(black,{BackgroundTransparency=0},.22) anim(board,{GroupTransparency=0},.32)
+   task.delay(.23,function()
+    if not feature.Alive or token~=feature.Token then return end
+    local ok,err=pcall(function() run:Set3dRenderingEnabled(false) end)
+    if not ok then
+     feature.Error=tostring(err)
+     local boot=env.FyrelithRenderBootstrap if boot and boot.Active then boot.Finish() end
+     pcall(function() run:Set3dRenderingEnabled(true) end)
+     feature.Enabled=false feature.RenderingOff=false overlay.Enabled=false black.BackgroundTransparency=1 board.GroupTransparency=1
+     paint()
+     if preferences then preferences:SetAttribute('RenderingDisabled',false) end
+     status.Text='3D control unavailable in this executor'
+     return
+    end
+    feature.RenderingOff=true feature.LastRenderSync=os.clock() status.Text='3D off  ·  Live balances active'
+    if not keepControls then local control=gui:FindFirstChild('SetWindowOpen') if control then control:Invoke(false) end end
+   end)
+  else
+   local boot=env.FyrelithRenderBootstrap if boot and boot.Active then boot.Finish() end
+   local ok,err=pcall(function() run:Set3dRenderingEnabled(true) end)
+   if not ok then feature.Error=tostring(err) status.Text='Could not resume 3D rendering' return false end
+   feature.Enabled=false feature.RenderingOff=false
+   anim(black,{BackgroundTransparency=1},.2) anim(board,{GroupTransparency=1},.16)
+   task.delay(.22,function() if feature.Alive and token==feature.Token then overlay.Enabled=false end end)
+   status.Text='3D rendering is on'
+  end
+  paint()
+  if preferences then preferences:SetAttribute('RenderingDisabled',value) end
+  local runtime=env.FyrelithRuntime if runtime and runtime.Save then runtime.Save() end
+  return true
+ end
+ function feature.Stop()
+  if not feature.Alive then return end
+  feature.Alive=false feature.Enabled=false feature.RenderingOff=false feature.Token+=1
+  local boot=env.FyrelithRenderBootstrap
+  if not (boot and boot.Active) then pcall(function() run:Set3dRenderingEnabled(true) end) end
+  for _,c in ipairs(feature.Connections) do c:Disconnect() end
+  for _,icon in pairs(nativeIcons) do icon:Destroy() end
+  overlay:Destroy() panel:Destroy()
+ end
+ on(overlay:GetPropertyChangedSignal('AbsoluteSize'),layout)
+ on(gui.Destroying,feature.Stop)
+ local clock=0
+ on(run.RenderStepped,function(dt)
+  if not feature.Enabled or (preferences and (preferences:GetAttribute('ReduceMotion') or preferences:GetAttribute('Smooth')==false)) then return end
+  clock+=math.min(dt,.05) glint.Rotation=math.sin(clock*.18)*10 live.BackgroundTransparency=.12+math.sin(clock*1.6)*.1
+ end)
+ layout()
+ task.spawn(function()
+  local tick=0
+  while feature.Alive and gui.Parent do
+   if feature.Enabled then
+    if feature.RenderingOff and os.clock()-(feature.LastRenderSync or 0)>=2 then feature.Reapply() end
+    local ok,err=pcall(function() tick+=1 if tick%5==0 then local count=#entries discover() if #entries~=count then layout() end end refresh() end)
+    feature.DataError=not ok and tostring(err) or nil
+   end
+   task.wait(1)
+  end
+ end)
+ if (preferences and preferences:GetAttribute('RenderingDisabled')==true) or (env.FyrelithRenderBootstrap and env.FyrelithRenderBootstrap.Active) then feature.SetEnabled(true) end
+end
 
 
 
@@ -8096,18 +6821,6 @@ do
  local function cash() return tonumber(val(player:FindFirstChild('_stats'),'resource')) or 0 end
  local function flat(v) return Vector3.new(v.X,0,v.Z) end
  local function cfData(cf) return {cf:GetComponents()} end
- function a.ResolvePlanPlacement(step)
-  if type(step.CF)~='table'or #step.CF~=12 then return nil,'Plan position is invalid'end
-  local data=Units[step.UnitId];if not data then return nil,'Plan unit data is unavailable'end
-  local cf=CFrame.new(unpack(step.CF));local point=cf.Position
-  for _,height in ipairs({6,20,39})do
-   local hit=Placement.raycast(point+Vector3.new(0,height,0),Vector3.new(0,-height-40,0))
-   if hit and math.abs(hit.Position.Y-point.Y)<=40 and Placement.is_valid_raycast_hit(hit.Instance,data)then
-    return cfData(CFrame.new(hit.Position)*(cf-cf.Position))
-   end
-  end
-  return nil,'Plan ground unavailable — check the map and saved position'
- end
  local function towers()
   local out={} local f=workspace:FindFirstChild('_UNITS')
   if f then for _,u in ipairs(f:GetChildren()) do
@@ -8194,7 +6907,6 @@ do
    if activeMenuCloser and activeMenuCloser~=closeMenu then activeMenuCloser(true) end
    activeMenuCloser=closeMenu draw() toggleMenu()
   end)
-  Bridge:RegisterPicker(anchor,title,current,options,function(entry)choose(entry);anchor.Text=tostring(current())end)
   return {Button=anchor,Label=caption,Set=function(text) anchor.Text=tostring(text) end}
  end
  panel('AutoPlayControls',8,8,372,'Auto Play')
@@ -8205,7 +6917,6 @@ do
  local pathFill=new('Frame',{Size=UDim2.fromScale(C.Path/100,1),BackgroundColor3=colors.accent,BorderSizePixel=0},pathTrack) round(pathFill,4) bind(pathFill,'BackgroundColor3','accent')
  local pathKnob=new('Frame',{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(C.Path/100,.5),Size=UDim2.fromOffset(13,13),BackgroundColor3=white,BorderSizePixel=0},pathTrack) round(pathKnob,7);bind(pathKnob,'BackgroundColor3','accent')
  local dragging=false local UIS=game:GetService('UserInputService')
- Bridge:RegisterSlider(pathTrack,'Auto Place Path (%)',function()return C.Path end,function(value)a.SetPathPercent(value);a.Save()end,0,100,1)
  local function setPath(x)
   a.SetPathPercent((x-pathTrack.AbsolutePosition.X)/math.max(pathTrack.AbsoluteSize.X,1)*100,false)
   pathInput.Text=tostring(C.Path) pathFill.Size=UDim2.fromScale(C.Path/100,1) pathKnob.Position=UDim2.fromScale(C.Path/100,.5)
@@ -8253,9 +6964,7 @@ do
  end
  local function addTower(p,t)
   for _,s in ipairs(p.Steps) do if s.Action=='Place' and s.UUID==t.UUID and (flat(CFrame.new(unpack(s.CF)).Position)-flat(t.CF.Position)).Magnitude<1 then return s end end
-  local position,reason=a.ResolvePlanPlacement({UnitId=t.Id,CF=cfData(t.CF)})
-  assert(position,reason)
-  local s={Action='Place',UUID=t.UUID,UnitId=t.Id,CF=position,Wave=0}
+  local s={Action='Place',UUID=t.UUID,UnitId=t.Id,CF=cfData(t.CF),Wave=0}
   p.Steps[#p.Steps+1]=s return s
  end
  local function snapshot()
@@ -8428,11 +7137,10 @@ do
   return true
  end
  local function send(step,unit,kind)
-  local ready,reason=fyPartyHost.Ready();if not ready then a.Status=reason;return end
   if a.Pending or os.clock()<nextRequest then return end
   local allowed,blocked=a.ValidateAutoAction(step,unit,kind)
   if not allowed then a.Status=blocked return end
-  if step.Action=='Place' and a.CheckPlacementRequest then
+  if step.Action=='Place' and (kind~='plan'or C.Smart) and a.CheckPlacementRequest then
    local valid,reason=a.CheckPlacementRequest(step)
    if not valid then a.Status=reason return end
   end
@@ -8460,7 +7168,7 @@ do
  local function tickPending()
   local p=a.Pending if not p then return false end
   if confirmed(p) then
-   if p.Step.Action=='Place'then a.LastPlacementIssue=nil;a.PlanPlacementFailures=0 end
+   if p.Step.Action=='Place'then a.LastPlacementIssue=nil end
    if p.Kind=='plan' then a.Index+=1 a.Save() end
    if a.RecordInvestment then a.RecordInvestment(p) end
    if a.RecoveryConfirmed then a.RecoveryConfirmed(p) end
@@ -8473,18 +7181,7 @@ do
    if p.PlacementKey then rejected[p.PlacementKey]=os.clock() end
    if p.Step.Action=='Upgrade' and p.Unit then upgradeHolds[p.Unit]={Before=p.Step.Target-1,Until=os.clock()+1} end
    if p.Step.Action=='Place' and a.Smart then a.Smart.PositionFailures={} a.Smart.LastAnalysis=-math.huge end
-   local planPlacement=p.Kind=='plan'and p.Step.Action=='Place'
-   if planPlacement then
-    a.PlanPlacementFailures=(a.PlanPlacementFailures or 0)+1
-    local delay=math.min(10,2^(math.min(a.PlanPlacementFailures,4)-1))
-    nextRequest=os.clock()+delay
-    a.LastPlacementIssue='Game declined the saved position — retrying in '..delay..'s'
-    a.Status=a.LastPlacementIssue
-   else
-    nextRequest=os.clock()+.2
-    a.Status=p.Step.Action=='Place'and'Placement declined • checking free positions and shared unit limits'or'Waiting for cash / valid placement'
-   end
-   a.Pending=nil return true
+   a.Pending=nil nextRequest=os.clock()+.2 a.Status=p.Step.Action=='Place' and 'Placement declined • checking free positions and shared unit limits' or 'Waiting for cash / valid placement' return true
   end
   if p.Step.Action=='Upgrade' and (p.Kind=='auto' or p.Kind=='smart' or p.Kind=='restore') and p.Returned and os.clock()-p.Sent>3 then
    if p.Unit then upgradeHolds[p.Unit]={Before=p.Step.Target-1,Until=os.clock()+6} end
@@ -8530,11 +7227,6 @@ do
   if not cost then a.Status='Unit / upgrade unavailable' return end
   if cash()<cost then a.Status='Step '..a.Index..' • waiting for cash' return end
   local single=table.clone(step)
-  if step.Action=='Place'then
-   local position,reason=a.ResolvePlanPlacement(step)
-   if not position then a.Status=reason;return end
-   single.CF=position
-  end
   if step.Action=='Upgrade' then single.Target=t.Upgrade+1 end
   send(single,t and t.Unit,'plan')
   if step.Action=='Upgrade' and single.Target<step.Target and a.Pending then a.Pending.Kind='plan-partial' end
@@ -8630,8 +7322,7 @@ do
   local eligible=0
   for _,t in ipairs(towers()) do
    local active=val(t.Stats,'active_attack') local d=Units[t.Id]
-   local cycles=env.FyrelithUnitCycles
-   if not(cycles and cycles.IsManaged(t.Unit))and active and active~='nil' and Attacks[active] and(not a.TeamPolicy or a.TeamPolicy.AllowsSkill(t.Id))and not (d and d._show_as_buff_unit) and not t.Unit:GetAttribute('_auto_active') then
+   if active and active~='nil' and Attacks[active] and(not a.TeamPolicy or a.TeamPolicy.AllowsSkill(t.Id))and not (d and d._show_as_buff_unit) and not t.Unit:GetAttribute('_auto_active') then
     eligible+=1
     local last=val(t.Stats,'last_active_cast') local pending=abilityPending[t.Unit]
     if pending and (last~=pending.Last or os.clock()-pending.Time>65) then abilityPending[t.Unit]=nil pending=nil end
@@ -9029,7 +7720,7 @@ end)()
  end
 
  local function drawCircle(center,radius)
-  if not C.Smart and not C.ShowAreas and not a.SelectingArea then clearPreview() return end
+  if not C.Smart and not a.SelectingArea then clearPreview() return end
   local quality=visualQuality()
   if not previewModel then previewModel=Instance.new('Model');previewModel.Name='FyrelithSmartArea';previewModel.Parent=workspace end
   local circles,index=circleList();local draw={}
@@ -9109,7 +7800,6 @@ end)()
   end
  end
  a.SetSmartRadius=setRadius
- Bridge:RegisterSlider(radiusTrack,'Circle radius',function()local _,radius=area();return radius or C.Radius end,function(value)setRadius(value,true)end,8,80,1)
  radiusInput.TextEditable=false radiusInput.Active=false
  local function dragRadius(track,x) setRadius(8+math.clamp((x-track.AbsolutePosition.X)/math.max(1,track.AbsoluteSize.X),0,1)*72,false) end
  connect(radiusTrack.InputBegan,function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then radiusDragging=true radiusDragInput=i a.EditingRadius=true dragRadius(radiusTrack,i.Position.X) end end)
@@ -9133,7 +7823,7 @@ end)()
  local areaState=label(page,'SmartAreaStatus','Choose an area inside the current map',480,630,402,34,13,true) areaState.TextWrapped=true
  local insight=label(page,'SmartInsight','Farms: edge • Buffs: 4 each • Damage: path / threats',480,762,402,66,13,true) insight.TextWrapped=true a.SmartInsight=insight
  function a.UpdateSmartUI()
-  if not C.Smart and not C.ShowAreas and not a.SelectingArea then
+  if not C.Smart and not a.SelectingArea then
    clearPreview()
    circlePicker.Set('Smart Play off')
    areaState.Text='Auto Place uses Path % without circles. Enable Smart Play to use circle areas.'
@@ -9147,7 +7837,7 @@ end)()
   local show=page:FindFirstChild('PreviewSmartArea') if show then show.Text=C.ShowAreas and 'Hide All Circles' or 'Show All Circles' end
   if not a.SelectingArea and not a.EditingRadius then
    local black=env.FyrelithBlackScreen
-   if C.ShowAreas and center and not Loader.IsLobby and not (black and black.Enabled) then drawCircle(center,C.Radius)
+   if C.Smart and C.ShowAreas and center and not Loader.IsLobby and not (black and black.Enabled) then drawCircle(center,C.Radius)
    elseif previewModel then clearPreview() end
   end
  end
@@ -9274,7 +7964,6 @@ end)()
   if not C.ShowAreas and not a.SelectingArea and not a.EditingRadius then clearPreview() end
   a.UpdateSmartUI() a.Save()
  end
- Bridge:RegisterToggle(page:FindFirstChild('PreviewSmartArea'),'Show circles','Preview saved circles without starting Auto Play.',function()return C.ShowAreas end,function(value)a.SetShowSmartAreas(value)end)
  page.CanvasSize=UDim2.fromOffset(0,1134)
  a.CleanupSmart=function()
   saveToken+=1 previewToken+=1 radiusDragging=false a.EditingRadius=false
@@ -10952,9 +9641,7 @@ end)()
     if C.Walk then walk() end
     if not Loader.IsLobby and not api.MatchEnded then
      local challenge=env.FyrelithAutoChallenge
-     local partyReady,partyReason=fyPartyHost.Ready()
-     if not partyReady then a.Status=partyReason
-     elseif a.SelectingArea or a.EditingRadius then if a.Pending then tickPending()end;a.Status='Adjusting Smart Play area'
+     if a.SelectingArea or a.EditingRadius then if a.Pending then tickPending()end;a.Status='Adjusting Smart Play area'
      elseif challenge and challenge.Priority and not challenge.InChallenge then a.Status='Waiting for Auto Challenge'
      elseif macroBusy() then a.Status='Waiting for Macro'
      elseif a.Capture then a.Status='Capturing • '..#(plan() and plan().Steps or {})..' steps'
@@ -11200,7 +9887,7 @@ end)()
   if url==''then C.URL='';save();feature.Status='Webhook URL cleared';return true end
   local valid=feature.ValidateURL(url)
   if not valid then feature.Status='Enter a valid Discord webhook URL';return false end
-  if C.URL~=valid then C.AvatarRevision=''end;C.URL=valid;save();feature.Status='Webhook URL saved';return true
+  if C.URL~=valid then C.AvatarRevision=''end;C.URL=valid;save();feature.Status='Webhook URL saved';task.defer(feature.SyncAvatar);return true
  end
  local function uiText(parent,name)
   local value=parent and parent:FindFirstChild(name)
@@ -11331,7 +10018,8 @@ end)()
   task.spawn(function()
    while feature.Alive and #feature.Queue>0 do
     local entry=table.remove(feature.Queue,1)
-    -- Sending a report must not depend on the removed legacy avatar asset loader.
+    local avatarWait=os.clock()+10;while feature.AvatarBusy and feature.Alive and os.clock()<avatarWait do task.wait(.05)end
+    feature.SyncAvatar()
     local delivered=false
     for attempt=1,3 do
      if not feature.Alive or (not entry.Test and not C.Enabled)or C.URL~=entry.URL then break end
@@ -11422,7 +10110,7 @@ end)()
  page.CanvasSize=UDim2.fromOffset(0,358)
  function feature.Stop()feature.Alive=false;table.clear(feature.Queue)end
  connect(gui.Destroying,feature.Stop)
- mask();if C.URL~=''then status(C.Enabled and 'Waiting for match results'or 'Webhook disabled')end
+ mask();if C.URL~=''then status(C.Enabled and 'Waiting for match results'or 'Webhook disabled');task.defer(feature.SyncAvatar)end
  task.spawn(function()
   while feature.Alive and gui.Parent do
    local ended=api.MatchEnded==true
@@ -11442,7 +10130,6 @@ end)()
  if not router then return end
  local guard={Alive=true};env.FyrelithAutoLeaveGuard=guard
  function guard.Arm()
-  if not fyPartyHost.Check(false)then return false end
   if env.FyrelithDungeon and env.FyrelithDungeon.OwnsMatch()then return false end
   if not guard.Alive or not cfg.AutoLeave or Loader.IsLobby then return false end
   local intent=router.Read()
@@ -11454,7 +10141,6 @@ end)()
   guard.Pending=written;return written
  end
  function guard.OnReplay()
-  if not fyPartyHost.Check(false)then return false end
   if not guard.Alive or not cfg.AutoLeave then return false end
   local intent=router.Read()
   local action=router.Decide(intent,game.GameId,game.PlaceId,game.JobId,DateTime.now().UnixTimestampMillis)
@@ -11473,6 +10159,110 @@ end)()
   end
  end)
 end)()
+
+do
+ local previous=env.FyrelithEventHorizon if previous then previous.Alive=false end
+ local style={Alive=true,Version='Event Horizon',Panels=0,Buttons=0,Fields=0,Switches=0}
+ env.FyrelithEventHorizon=style
+ local decorated=setmetatable({},{__mode='k'}) local gradients=setmetatable({},{__mode='k'})
+ local panelNames={AutoPlayControls=true,AutoPlanControls=true,PlayerProfile=true,CurrentMap=true,AutoSummon=true,AutoRedeemCodes=true,AutoBuyGoldShop=true,BannerUnitPreview=true,SavedMacrosCard=true}
+ local function stroke(parent,name,transparency,color)
+  local edge=new('UIStroke',{Name=name,ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Thickness=1,Transparency=transparency},parent)
+  bind(edge,'Color',color or 'line') return edge
+ end
+ local function gradient(parent,name,rotation,first,last)
+  return new('UIGradient',{Name=name,Rotation=rotation,Color=ColorSequence.new(first,last)},parent)
+ end
+ local function polishPanel(item)
+  if decorated[item] then return end decorated[item]=true style.Panels+=1
+  item:SetAttribute('VisualStyle','Event Horizon')
+  local function tintPanel()
+   if not style.Alive or not item.Parent then return end
+   local tint=colors.card:Lerp(colors.accent,.105)
+   if item.BackgroundColor3~=tint then item.BackgroundColor3=tint end
+  end
+  tintPanel()
+  connect(item:GetPropertyChangedSignal('BackgroundColor3'),tintPanel)
+  connect(accentIcon:GetPropertyChangedSignal('ImageColor3'),tintPanel)
+  local finish=item:FindFirstChild('SurfaceFinish')
+  if finish then finish.Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(185,185,185)) finish.Rotation=115
+  else gradient(item,'EHSurface',115,Color3.new(1,1,1),Color3.fromRGB(185,185,185)) end
+  local corner=item:FindFirstChildOfClass('UICorner') if corner then corner.CornerRadius=UDim.new(0,14) end
+  local edge=item:FindFirstChildOfClass('UIStroke') if edge then edge.Transparency=.4 end
+  local inner=new('Frame',{Name='EHInnerRim',Position=UDim2.fromOffset(1,1),Size=UDim2.new(1,-2,1,-3),BackgroundTransparency=1,BorderSizePixel=0,Active=false,ZIndex=item.ZIndex},item)
+  round(inner,13) local rim=stroke(inner,'Rim',.88,'accent')
+  new('UIGradient',{Rotation=100,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.1),NumberSequenceKeypoint.new(.5,.7),NumberSequenceKeypoint.new(1,1)})},rim)
+  local lip=new('Frame',{Name='EHDepthLip',Position=UDim2.new(0,10,1,-3),Size=UDim2.new(1,-20,0,3),BackgroundColor3=Color3.fromRGB(4,5,10),BackgroundTransparency=.18,BorderSizePixel=0,Active=false,ZIndex=item.ZIndex+1},item) round(lip,3)
+  gradient(lip,'DepthFalloff',90,Color3.fromRGB(89,85,112),Color3.fromRGB(8,9,16))
+  local rail=item:FindFirstChild('AccentRail')
+  if not rail then rail=new('Frame',{Name='AccentRail',Position=UDim2.fromOffset(18,0),Size=UDim2.new(1,-36,0,1),BackgroundTransparency=.22,BorderSizePixel=0,Active=false,ZIndex=item.ZIndex+1},item) bind(rail,'BackgroundColor3','accent') end
+  local shine=rail:FindFirstChildOfClass('UIGradient')
+  if not shine then shine=new('UIGradient',{},rail) end
+  shine.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.4,.1),NumberSequenceKeypoint.new(.6,.1),NumberSequenceKeypoint.new(1,1)})
+  gradients[item]=shine
+ end
+ local function polishButton(item)
+  if decorated[item] or item.Size.Y.Offset<28 or item.Size.X.Offset<70 or item.BackgroundTransparency>=.95 or item.Name:find('Track') or item.Name:find('Slider') then return end
+  decorated[item]=true style.Buttons+=1 item:SetAttribute('VisualStyle','Event Horizon')
+  local mainAction=item.Name=='MacroPause' or item:GetAttribute('Primary')==true
+  local function tintButton(hover)
+   if not item.Parent then return end
+   if mainAction then item.BackgroundColor3=colors.accent:Lerp(Color3.new(1,1,1),hover and .44 or .3) item.TextColor3=Color3.fromRGB(255,240,245)
+   elseif not item:GetAttribute('Selected') then item.BackgroundColor3=colors.field:Lerp(colors.accent,hover and .18 or .105) end
+  end
+  tintButton(false)
+  local corner=item:FindFirstChildOfClass('UICorner') if corner then corner.CornerRadius=UDim.new(0,10) end
+  if not item:FindFirstChildOfClass('UIGradient') then gradient(item,'EHButtonSurface',90,Color3.fromRGB(255,249,255),Color3.fromRGB(185,185,185)) end
+  local bevel=new('Frame',{Name='EHButtonBevel',Position=UDim2.new(0,7,1,-2),Size=UDim2.new(1,-14,0,2),BackgroundColor3=Color3.fromRGB(6,6,12),BackgroundTransparency=.22,BorderSizePixel=0,Active=false,ZIndex=item.ZIndex+1},item) round(bevel,2)
+  local top=new('Frame',{Name='EHButtonHighlight',Position=UDim2.fromOffset(8,1),Size=UDim2.new(1,-16,0,1),BackgroundColor3=Color3.fromRGB(238,222,255),BackgroundTransparency=.85,BorderSizePixel=0,Active=false,ZIndex=item.ZIndex+1},item)
+  new('UIGradient',{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.4,0),NumberSequenceKeypoint.new(.6,0),NumberSequenceKeypoint.new(1,1)})},top)
+  local hovering=false
+  connect(item.MouseEnter,function() hovering=true tintButton(true) tween(top,{BackgroundTransparency=.38}) end)
+  connect(item.MouseLeave,function() hovering=false tintButton(false) tween(top,{BackgroundTransparency=.74}) tween(bevel,{BackgroundTransparency=.22}) end)
+  connect(item.InputBegan,function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then tween(top,{BackgroundTransparency=.96}) tween(bevel,{BackgroundTransparency=.8}) end end)
+  connect(item.InputEnded,function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then tween(top,{BackgroundTransparency=hovering and .48 or .85}) tween(bevel,{BackgroundTransparency=.22}) end end)
+ end
+ local function polishField(item)
+  if decorated[item] or item.BackgroundTransparency>=.95 then return end decorated[item]=true style.Fields+=1
+  item:SetAttribute('VisualStyle','Event Horizon')
+  if not item:FindFirstChildOfClass('UIGradient') then gradient(item,'EHInsetSurface',90,Color3.fromRGB(129,124,150),Color3.fromRGB(243,239,255)) end
+  local edge=stroke(item,'EHFocus',1,'accent')
+  connect(item.Focused,function() tween(edge,{Transparency=.2}) end)
+  connect(item.FocusLost,function() tween(edge,{Transparency=1}) end)
+ end
+ local function polishSwitch(item)
+  if decorated[item] or item.Name~='Track' or item.Size.X.Offset>70 or item.Size.Y.Offset<18 then return end
+  local knob=item:FindFirstChild('Knob') if not knob or not knob:IsA('Frame') then return end
+  decorated[item]=true style.Switches+=1 item:SetAttribute('VisualStyle','Event Horizon')
+  gradient(item,'EHSocket',90,Color3.fromRGB(185,185,185),Color3.fromRGB(247,236,255))
+  stroke(item,'EHSocketRim',.79,'line')
+  gradient(knob,'EHKnobLight',120,Color3.new(1,1,1),Color3.fromRGB(148,145,171))
+  local edge=new('UIStroke',{Name='EHKnobRim',Color=Color3.fromRGB(229,217,249),Transparency=.65,Thickness=1},knob)
+ end
+ local function apply(item)
+  if item:GetAttribute('AtelierOwned')then return end
+  if item:IsA('Frame') then
+   if item.Name:match('Card$') or panelNames[item.Name] then polishPanel(item) else polishSwitch(item) end
+  elseif item:IsA('TextButton') then polishButton(item)
+  elseif item:IsA('TextBox') then polishField(item) end
+ end
+ for _,item in ipairs(gui:QueryDescendants('Frame, TextButton, TextBox')) do apply(item) end
+ connect(gui.DescendantAdded,function(item) if item:IsA('Frame') or item:IsA('TextButton') or item:IsA('TextBox') then task.defer(function() if style.Alive and item.Parent then apply(item) end end) end end)
+ connect(gui.Destroying,function() style.Alive=false end)
+ -- A single shared clock; no idle animation loop or per-widget frame callbacks.
+ local clock=0 local pointer=game:GetService('UserInputService')
+ connect(game:GetService('RunService').RenderStepped,function(dt)
+  if not style.Alive or not gui.Window.Visible or not motionEnabled() then return end
+  clock+=math.min(dt,.05)
+  local position=pointer:GetMouseLocation()
+  for panel,shine in pairs(gradients) do if panel.Parent and panel.Visible and panel.Parent:IsA('GuiObject') and panel.Parent.Visible then
+   local localPoint=position-panel.AbsolutePosition
+   if localPoint.X>=0 and localPoint.Y>=0 and localPoint.X<=panel.AbsoluteSize.X and localPoint.Y<=panel.AbsoluteSize.Y then
+    shine.Offset=Vector2.new(math.clamp(localPoint.X/math.max(1,panel.AbsoluteSize.X)-.5,-.5,.5),0)
+   elseif shine.Offset~=Vector2.zero then shine.Offset=Vector2.zero end
+  end end
+ end)
+end
 
 do
  local previous=env.FyrelithDungeon;if previous then previous.Alive=false end
@@ -11768,7 +10558,6 @@ end
   return nativeOpen and intermission or matchEnded and(finished or nativeOpen)
  end
  function D.Tick()
-  local ready,reason=fyPartyHost.Ready();if not ready then D.Status=reason;return end
   if not D.Alive or not api.Alive then return end
   if not C.Enabled then D.Status='Disabled';return end
   local state=data();if not state then D.Status='Waiting for dungeon data';return end
@@ -11888,11 +10677,8 @@ createAutoJoin()
 if not fyOwnsExecution() then return end
 fyExecution.Gui=playerGui:FindFirstChild('FyrelithUIOnly')
 assert(fyExecution.Gui,'Fyrelith UI was not created')
-
 -- FYRELITH_DUNGEON_EXTRAS_V1
 assert(loadstring([=================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Dungeon life guard and conditional Shrine policies. No dungeon_quit requests.
 local E=getgenv()
 local D=assert(E.FyrelithDungeon,'Dungeon automation is not ready')
@@ -11982,7 +10768,6 @@ local function save()
  return ok and result==true
 end
 local function returnToLobby()
- local allowed,reason=fyPartyHost.Check(false);if not allowed then D.Status=reason;return end
  if L.IsLobby then X.PendingReturn=false;return end
  if not X.PendingReturn or os.clock()<(X.NextReturn or 0)then return end
  if (X.ReturnAttempts or 0)>=3 then D.Status='Auto Dungeon stopped; return to lobby manually';return end
@@ -12004,12 +10789,11 @@ local function returnToLobby()
  if not lobby then D.Status='Lobby destination unavailable';return end
  X.NextReturn=os.clock()+20;X.ReturnAttempts=(X.ReturnAttempts or 0)+1
  D.Status='1 life remaining: returning to lobby; Auto Dungeon is OFF'
- local ok,result=pcall(fyPartyHost.Return);local err=not ok and result or nil;ok=ok and result==true
+ local ok,err=pcall(T.Teleport,T,lobby,P)
  if not ok then X.LastError=tostring(err);D.Status='Lobby return failed; retrying'end
 end
 local patchedTick
 patchedTick=function()
- local ready,reason=fyPartyHost.Ready();if not ready then D.Status=reason;return end
  if not X.Alive then return end
  if X.PendingReturn then returnToLobby();return end
  local state=data()
@@ -12089,13 +10873,32 @@ local function paintMode()
  picker.Value.Text=title
  if refreshPolicyUI then refreshPolicyUI()end
 end
-local record=assert(Bridge.ByNode[picker],'Shrine selector bridge is missing')
-local oldOptions,oldSet=record.Options,record.Set
-record.Options=function()
- local all={};for _,mode in ipairs(modes)do all[#all+1]={id=mode[1],name=mode[2]}end;return all
+local rebound=false
+for _,connection in ipairs(getconnections(picker.Activated))do
+ local callback=connection.Function
+ if type(callback)=='function'then
+  local values=debug.getupvalues(callback)
+  if values[1]==picker and type(values[4])=='function'and values[15]==picker:FindFirstChild('Value')and type(values[17])=='function'then
+   local originalOptions,originalSelected=values[4],values[17]
+   local options=function()
+    local all={}
+    for _,mode in ipairs(modes)do all[#all+1]={id=mode[1],name=mode[2]}end
+    return all
+   end
+   local selected=function(entry)originalSelected(entry);paintMode()end
+   debug.setupvalue(callback,4,options)
+   debug.setupvalue(callback,17,selected)
+   X.RestorePicker=function()
+    local current=debug.getupvalues(callback)
+    if current[4]==options then debug.setupvalue(callback,4,originalOptions)end
+    if current[17]==selected then debug.setupvalue(callback,17,originalSelected)end
+    if type(values[3])=='function'then values[3]()end
+   end
+   rebound=true;break
+  end
+ end
 end
-record.Set=function(entry)oldSet(entry);paintMode()end
-X.RestorePicker=function()record.Options=oldOptions;record.Set=oldSet end
+assert(rebound,'Could not update native Shrine picker callbacks')
 X.NativePicker=picker
 paintMode()
 
@@ -12157,8 +10960,6 @@ save()
 
 -- FYRELITH_SMART_FARM_POLICY_V1
 assert(loadstring([===================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Smart Play in every mode: cap damage at 4 only until the farm economy is complete.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay,'Auto Play is not ready')
@@ -12372,8 +11173,6 @@ X.Installed=true
 ]===================], 'Fyrelith Smart Farm Policy'))()
 -- FYRELITH_SMART_DUNGEON_ELEMENTS_V1
 assert(loadstring([=====================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Smart Play only: prefer equipped damage units that match Dungeon amplification.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay,'Auto Play is not ready')
@@ -12534,8 +11333,6 @@ X.Installed=true
 ]=====================], 'Fyrelith Smart Dungeon Elements'))()
 -- FYRELITH_SMART_AREA_VISUALS_V1
 assert(loadstring([=======================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- AREA labels, a clear center, and brighter violet/pink perimeter glow.
 local E=getgenv()
 local prior=E.FyrelithSmartAreaVisuals
@@ -12652,8 +11449,6 @@ X.Installed=true
 ]=======================], 'Fyrelith AREA Visuals'))()
 -- FYRELITH_SMART_FARM_PLACEMENT_V1
 assert(loadstring([=========================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Select farm positions by maximum distance from every monster path, inside saved areas.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay)
@@ -12731,8 +11526,6 @@ X.Installed=true
 ]=========================], 'Fyrelith Farm Placement'))()
 -- FYRELITH_SMART_REQUEST_RECOVERY_V1
 assert(loadstring([===========================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Recover completed failed placement requests; never resend an in-flight request.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay)
@@ -12785,8 +11578,6 @@ X.Installed=true
 ]===========================], 'Fyrelith Request Recovery'))()
 -- FYRELITH_DUNGEON_TEAM_BUFF_ROUTE_V1
 assert(loadstring([=============================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- When no next room offers coins/chests, pick the strongest buff for equipped damage units.
 local E=getgenv()
 local D=assert(E.FyrelithDungeon)
@@ -12848,8 +11639,6 @@ X.Installed=true
 ]=============================], 'Fyrelith Team Buff Route'))()
 -- FYRELITH_FINAL_FARM_PAYOUT_FIX_V1
 assert(loadstring([===============================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Farm payout FX can arrive during the intermission before the wave counter increments.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay)
@@ -12874,8 +11663,6 @@ X.Installed=true
 ]===============================], 'Fyrelith Final Farm Payout'))()
 -- FYRELITH_FARM_SALE_AUDIT_V1
 assert(loadstring([=================================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Evidence for automatic sales: track native farm-sale requests and server acknowledgements.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay)
@@ -12935,8 +11722,6 @@ X.Publish()
 ]=================================], 'Fyrelith Farm Sale Audit'))()
 -- FYRELITH_FAST_FARM_SALE_V1
 assert(loadstring([===================================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Advance to the next farm after server acceptance, without waiting for the despawn animation.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay)
@@ -12982,8 +11767,6 @@ X.Installed=true
 ]===================================], 'Fyrelith Fast Farm Sale'))()
 -- FYRELITH_COMPACT_FARM_V1
 assert(loadstring([=====================================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Small Smart areas: allow close roadside farm spots while retaining footprint and collision checks.
 local E=getgenv()
 local A=assert(E.FyrelithAutoPlay)
@@ -13008,8 +11791,6 @@ X.Installed=true
 ]=====================================], 'Fyrelith Compact Farm'))()
 -- FYRELITH_CHALLENGE_INTERRUPT_V1
 assert(loadstring([=======================================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Challenge reset has priority over every current game mode; return without waiting for match end.
 local E=getgenv()
 local C=assert(E.FyrelithAutoChallenge)
@@ -13038,7 +11819,6 @@ local function validTicket(ticket)
  return type(ticket)=='table'and C.EnabledModes[ticket.Mode]==true and type(ticket.At)=='number'and workspace:GetServerTimeNow()-ticket.At<600
 end
 local function depart(mode,reason)
- local allowed,blocked=fyPartyHost.Check(false);if not allowed then C.State=blocked;return end
  if X.Returning then return end
  local settings=L.load_data(script,'GameplaySettings')
  local lobby=tonumber(settings.LOBBY_PLACE_ID)
@@ -13055,7 +11835,7 @@ local function depart(mode,reason)
  pcall(C.Save)
  local runtime=E.FyrelithRuntime;if runtime and runtime.Save then pcall(runtime.Save)end
  X.Attempts+=1;X.LastDeparture=os.clock()
- local ok,result=pcall(fyPartyHost.Return);local err=not ok and result or nil;ok=ok and result==true
+ local ok,err=pcall(T.Teleport,T,lobby,player)
  if not ok then X.Error=tostring(err);X.Returning=false;X.RetryAt=os.clock()+10 end
 end
 local decision
@@ -13068,7 +11848,6 @@ X.Failed=T.TeleportInitFailed:Connect(function(who,_,message)
  if who==player and X.Returning then X.Error=tostring(message);X.Returning=false;X.RetryAt=os.clock()+10 end
 end)
 local function step()
- local ready,reason=fyPartyHost.Ready();if not ready then C.State=reason;return end
  if not X.Alive or not C.Alive or not C.Enabled then return end
  local level=L.LevelData
  local p=profile();if not p then return end
@@ -13118,10 +11897,52 @@ if gui then X.Destroying=gui.Destroying:Connect(function()X.Close();if X.Destroy
 X.Installed=true
 
 ]=======================================], 'Fyrelith Challenge Interrupt'))()
+-- FYRELITH_LIFE_SWITCH_THEME_V1
+assert(loadstring([=========================================[
+-- Bind the life guard to the same live palette as the native Dungeon switches.
+local E=getgenv()
+local gui=assert(E.FyrelithExecutionState.Gui)
+local page=assert(gui:FindFirstChild('Dungeon',true))
+local button=assert(page:FindFirstChild('DungeonLifeGuard')).Toggle
+local track=assert(button:FindFirstChild('Track'))
+local reference=assert(page:FindFirstChild('Dungeon_Finish'))
+local old=E.FyrelithLifeSwitchTheme
+if old and old.Close then old.Close()end
+local X={Connections={}}
+E.FyrelithLifeSwitchTheme=X
+local function palette()
+ for _,connection in ipairs(getconnections(reference.Activated))do
+  if type(connection.Function)=='function'then
+   for _,value in pairs(debug.getupvalues(connection.Function))do
+    if type(value)=='function'and debug.info(value,'n')=='paint'then
+     for _,color in pairs(debug.getupvalues(value))do
+      if type(color)=='table'and typeof(color.accent)=='Color3'and typeof(color.line)=='Color3'then return color end
+     end
+    end
+   end
+  end
+ end
+end
+local painting=false
+local function sync()
+ if painting or not track.Parent then return end
+ local colors=palette();if not colors then return end
+ local target=E.FyrelithDungeon.Config.LeaveAtOneLife and colors.accent or colors.line
+ painting=true
+ track.BackgroundColor3=target
+ painting=false
+ X.MatchesPalette=track.BackgroundColor3==target
+end
+X.Connections[#X.Connections+1]=track:GetPropertyChangedSignal('BackgroundColor3'):Connect(sync)
+X.Connections[#X.Connections+1]=button:GetAttributeChangedSignal('Enabled'):Connect(function()task.defer(sync)end)
+X.Connections[#X.Connections+1]=gui:GetAttributeChangedSignal('PaletteRevision'):Connect(function()task.defer(sync)end)
+function X.Close()for _,connection in ipairs(X.Connections)do connection:Disconnect()end end
+X.Connections[#X.Connections+1]=gui.Destroying:Connect(X.Close)
+sync();X.Installed=true
+
+]=========================================], 'Fyrelith Life Switch Theme'))()
 -- FYRELITH_SUMMER_21_V1
 assert(loadstring([================================================[
-local Bridge=getgenv().AuroraFyrelithBridge
-local fyPartyHost=getgenv().FyrelithPartyHostGuard
 -- Summer 21 controller. Native endpoints and UI state are observed before acting.
 local E=getgenv()
 local execution=assert(E.FyrelithExecutionState)
@@ -13352,7 +12173,6 @@ function S.SolveCaptcha()
 end
 -- One outstanding request per controller; unknown responses back off instead of spamming.
 local function call(endpoint,key,...)
- local ready,reason=fyPartyHost.Ready();if not ready then note(reason);return false end
  if not active()or S.Pending or os.clock()<nextCall or os.clock()<(retry[key]or 0)then return false end
  local args=table.pack(...);local token={Endpoint=endpoint,Key=key,At=os.clock()}
  S.Pending=token;nextCall=os.clock()+1
@@ -13759,15 +12579,11 @@ local function toggle(parent,key,title,callback)
  local track=new('Frame',{Name='Track',Position=UDim2.new(1,-59,.5,-13),Size=UDim2.fromOffset(50,26),BorderSizePixel=0},row);round(track,14)
  local knob=new('Frame',{Name='Knob',Size=UDim2.fromOffset(20,20),BackgroundColor3=Color3.fromRGB(244,243,255),BorderSizePixel=0},track);round(knob,12)
  local function paint()local on=C[key]==true;track.BackgroundColor3=color(on and'accent'or'line',Color3.fromRGB(80,74,104));knob.Position=UDim2.fromOffset(on and 27 or 3,3);row:SetAttribute('Enabled',on)end
- Bridge:RegisterToggle(row,title,'',function()return C[key]==true end,function(value)if C[key]~=value then Bridge:Invoke(row,'Activated')end end)
  painters[#painters+1]=paint;paint();return row
 end
 local function cycle(parent,key,title,values,callback)
  local b;local function paint()b.Text=title..'   ·   '..tostring(C[key])end
  b=button(parent,key,'',function()local i=table.find(values,C[key])or 0;C[key]=values[i%#values+1];if callback then callback(C[key])end;S.Save();paint()end)
- Bridge:RegisterPicker(b,title,function()return tostring(C[key])end,function()
-  local options={};for _,value in ipairs(values)do options[#options+1]={id=value,name=tostring(value),selected=C[key]==value}end;return options
- end,function(entry)C[key]=entry.id;if callback then callback(C[key])end;S.Save();paint()end)
  painters[#painters+1]=paint;paint();return b
 end
 local function number(parent,key,title,lo,hi)
@@ -13877,7 +12693,6 @@ local function refreshLists()
   if not row then
    local k=key
    local frame=new('Frame',{Name='ShopItem',Size=UDim2.new(1,0,0,64),BackgroundTransparency=1},shopList)
-   frame:SetAttribute('AuroraItemId',d.Data.item_id or d.Id)
    local b=button(frame,'Select','',function()C.ShopSelected[k]=not C.ShopSelected[k]or nil;S.Save()end);b.Size=UDim2.new(1,-65,0,34)
    local target=new('TextBox',{Name='TargetQuantity',Text=tostring(C.ShopTargets[k]or 1),PlaceholderText='Qty',ClearTextOnFocus=false,Size=UDim2.fromOffset(58,34),Position=UDim2.new(1,-58,0,0),TextColor3=Color3.fromRGB(239,240,249),Font=Enum.Font.Gotham,TextSize=12,BorderSizePixel=0},frame);round(target,7);paintProperty(target,'BackgroundColor3','field',Color3.fromRGB(38,34,51))
    local detail=text(frame,'Detail','',25,10);detail.Position=UDim2.fromOffset(0,37);detail.AutomaticSize=Enum.AutomaticSize.None
@@ -13949,888 +12764,108 @@ end)
 S.Installed=true
 
 ]================================================], 'Fyrelith Summer 21'))()
+-- FYRELITH_RESET_ALL_SETTINGS_V1
+assert(loadstring([===========================================[
+-- Reset every settings category, retaining recorded macros and cached map geometry.
+local E=getgenv()
+local player=game:GetService('Players').LocalPlayer
+local gui=assert(E.FyrelithExecutionState and E.FyrelithExecutionState.Gui,'Fyrelith UI is not ready')
+local storage=assert(E.FyrelithDefaultLoaderStorage or E.FyrelithLoaderStorage)
+local H=game:GetService('HttpService')
+local old=E.FyrelithFactoryReset
+if old and old.Connection then old.Connection:Disconnect()end
+local X={Busy=false}
+E.FyrelithFactoryReset=X
+local suffix='_'..player.UserId..'_'..game.GameId..'.json'
+local categories={'Session','TeamSettings','GoldShop','Summon','AutoClaim','Trait','Privacy','Challenge','Buff','TeamControl','Merchant','Webhook','Event','EventSpells','AprilUnits','Summer','Dungeon','AutoPlay','Macros'}
+function X.DefaultDocument(category,document)
+ document=type(document)=='table'and document or {}
+ if category=='Macros'then return {Library=type(document.Library)=='table'and document.Library or {},Config={Name='My macro',Timing='Hybrid',Auto=false,Wait=60}}end
+ if category=='AutoPlay'then return {Plans=type(document.Plans)=='table'and document.Plans or {},Areas={}}end
+ return {}
+end
+function X.Run()
+ if X.Busy then return false end;X.Busy=true
+ local source=E.FyrelithScriptSource
+ local compiled,compileError=type(source)=='string'and loadstring(source)
+ if not compiled then X.Busy=false;X.Error=tostring(compileError or 'Script source unavailable');return false end
+ -- Flush the current values before backing up. No game requests are issued by this reset.
+ local controllers={}
+ for key,value in pairs(E)do if type(key)=='string'and key:match('^Fyrelith')and type(value)=='table'and value~=X then controllers[#controllers+1]=value end end
+ for _,value in ipairs(controllers)do if type(value.Save)=='function'then pcall(value.Save)end end
+ local backup,replacements={},{}
+ local prepared,prepareError=pcall(function()
+  for _,category in ipairs(categories)do
+   local name='Fyrelith'..category..suffix
+   local raw,document
+   if storage.Exists(name)then raw=storage.Read(name);pcall(function()document=H:JSONDecode(raw)end)end
+   backup[name]=raw or false
+   replacements[name]=H:JSONEncode(X.DefaultDocument(category,document))
+  end
+  X.BackupFile='FyrelithResetBackup_'..player.UserId..'_'..game.GameId..'_'..DateTime.now().UnixTimestampMillis..'.json'
+  local encoded=H:JSONEncode({Version=1,At=os.time(),Files=backup})
+  storage.Write(X.BackupFile,encoded);assert(storage.Read(X.BackupFile)==encoded,'Reset backup verification failed')
+ end)
+ if not prepared then X.Busy=false;X.Error=tostring(prepareError);warn('Fyrelith reset: '..X.Error);return false end
+ -- Old save callbacks must not write their captured values over the fresh defaults.
+ storage.Epoch=(storage.Epoch or 0)+1
+ local execution=E.FyrelithExecutionState
+ if execution then execution.Cancelled=true;execution.Ready=false end
+ for _,value in ipairs(controllers)do
+  if type(value.Enabled)=='boolean'then value.Enabled=false end
+  if type(value.Config)=='table'then for key,enabled in pairs(value.Config)do if type(enabled)=='boolean'then value.Config[key]=false end end end
+ end
+ for _,value in ipairs(controllers)do if type(value.Close)=='function'then pcall(value.Close)end end
+ for _,value in ipairs(controllers)do if type(value.Stop)=='function'then pcall(value.Stop)end end
+ for _,value in ipairs(controllers)do
+  if value.Alive~=nil then value.Alive=false end
+  if typeof(value.Connection)=='RBXScriptConnection'then value.Connection:Disconnect()end
+  if type(value.Connections)=='table'then for _,connection in pairs(value.Connections)do if typeof(connection)=='RBXScriptConnection'then connection:Disconnect()end end end
+ end
+ if gui.Parent then gui:Destroy()end
+ local runtime=E.FyrelithRuntime
+ if runtime then
+  runtime.Alive=false
+  if runtime.Connection then runtime.Connection:Disconnect()end
+  if runtime.PreferenceConnection then runtime.PreferenceConnection:Disconnect()end
+ end
+ local written,writeError=pcall(function()
+  for name,encoded in pairs(replacements)do storage.Write(name,encoded);assert(storage.Read(name)==encoded,'Default settings verification failed: '..name)end
+ end)
+ if not written then
+  for name,raw in pairs(backup)do if type(raw)=='string'then pcall(storage.Write,name,raw)end end
+  X.Error=tostring(writeError);warn('Fyrelith reset failed; settings backup restored: '..X.Error)
+ end
+ local preferences=player.PlayerGui:FindFirstChild('FyrelithDefaultPreferences')
+ if preferences then preferences:Destroy()end
+ E.FyrelithLoadedSession=nil
+ E.FyrelithLoadDelaySeenGame=nil;E.FyrelithDefaultLoadDelaySeenGame=nil
+ E.FyrelithReturnLobbyInProgress=false
+ E.FyrelithDefaultLeaveRouter=nil
+ E.FyrelithRenderBootstrap=nil
+ E.FyrelithMatchClock=nil
+ for _,name in ipairs({'FyrelithChallengeInterruptTicket','FyrelithDefaultLoaderDelayConfig','FyrelithDefaultPendingAutoLeave'})do pcall(function()game:GetService('TeleportService'):SetTeleportSetting(name,nil)end)end
+ pcall(function()game:GetService('RunService'):Set3dRenderingEnabled(true)end)
+ X.Completed=written
+ E.FyrelithLastReset={Completed=written,BackupFile=X.BackupFile,Error=X.Error}
+ task.defer(compiled)
+ return written
+end
+local button=assert(gui:FindFirstChild('ResetPreferences',true),'Reset settings button missing')
+for _,connection in ipairs(getconnections(button.Activated))do connection:Disconnect()end
+X.Connection=button.Activated:Connect(X.Run)
+X.Installed=true
 
--- Party integration: native service calls, isolated state, no invitation hooks.
-do
- local Players=game:GetService('Players')
- local localPlayer=Players.LocalPlayer
- local http=game:GetService('HttpService')
- local file='Party_'..localPlayer.UserId..'.json'
- local C={AutoAddFriends=false,AutoAccept=false,InviteNames='',AcceptNames='',InviteInterval=10}
- pcall(function()
-  local saved=http:JSONDecode(readfile(file))
-  for _,key in ipairs({'AutoAddFriends','AutoAccept'})do if type(saved[key])=='boolean'then C[key]=saved[key]end end
-  for _,key in ipairs({'InviteNames','AcceptNames'})do if type(saved[key])=='string'then C[key]=saved[key]end end
-  if type(saved.InviteInterval)=='number'then C.InviteInterval=math.clamp(saved.InviteInterval,5,60)end
- end)
- local ready=getgenv().FyrelithGameReady
- local services=ready.Services
- local P={Config=C,Status='Ready',LastError=nil,Sent={},Joined={},Accepted=0,Invited=0,NextInvite=0}
- getgenv().FyrelithParty=P
- local function names(value)
-  local result,seen={},{}
-  for name in tostring(value or ''):gmatch('[^,%s;]+')do
-   name=name:gsub('^@','')
-   assert(#name>=3 and #name<=20 and name:match('^[%w_]+$'),'Use Roblox usernames, separated by commas')
-   if not seen[name:lower()]then seen[name:lower()]=true;result[#result+1]=name end
-  end
-  return table.concat(result,', '),seen
- end
- function P.Matches(value,target)
-  local _,set=names(value)
-  return set[tostring(target.Name):lower()]==true
- end
- function P.CheckReady(config,own,players)
-  if config.AutoAddFriends then
-   local wanted,missing={},{}
-   local _,set=names(config.InviteNames)
-   local total=0;for name in pairs(set)do if name~=own.Name:lower()then wanted[name]=true;total+=1 end end
-   if total==0 then return false,'Add usernames to the Party invite list'end
-   local id=own:GetAttribute('PartyId')
-   if id~=nil then for _,target in ipairs(players)do
-    if target.Parent and target:GetAttribute('PartyId')==id then wanted[target.Name:lower()]=nil end
-   end end
-   for name in pairs(wanted)do missing[#missing+1]=name end;table.sort(missing)
-   if #missing>0 then return false,'Waiting for Party: '..table.concat(missing,', ')end
-   return true,'All listed players are in the party'
-  end
-  if config.AutoAccept and own:GetAttribute('PartyId')==nil then return false,'Waiting to join the listed host\'s party'end
-  return true,'Party ready'
- end
- function P.Ready()return P.CheckReady(C,localPlayer,Players:GetPlayers())end
- local function save()local ok,err=pcall(function()writefile(file,http:JSONEncode(C))end);if not ok then P.LastError='Could not save Party settings';warn('[FYRELITH Party] '..tostring(err))end end
- function P.List(key)
-  assert(key=='InviteNames'or key=='AcceptNames','Unknown name list')
-  local normalized=names(C[key]);local result={}
-  for name in normalized:gmatch('[^, ]+')do result[#result+1]={id=name,name=name}end
-  return result
- end
- function P.UpdateList(key,change)
-  assert(key=='InviteNames'or key=='AcceptNames','Unknown name list')
-  assert(type(change)=='table','Invalid list action')
-  if change.Action=='Add'then
-   C[key]=names(C[key]..', '..tostring(change.Names or''))
-  elseif change.Action=='Remove'then
-   local result={};for _,entry in ipairs(P.List(key))do if entry.id:lower()~=tostring(change.Name):lower()then result[#result+1]=entry.id end end
-   C[key]=table.concat(result,', ')
-  else error('Invalid list action')end
-  save();return true
- end
- -- Dependencies are injectable so checks never need to contact other players.
- function P.Step(D)
-  if not D.Alive()then return end
-  local ui=D.UI()
-  if not ui or not ui.ready then P.Status='Waiting for Party service';return end
-  local own=D.Self
-  local id=own:GetAttribute('PartyId')
-  local owner=own:GetAttribute('PartyOwnerId')
-  for _,target in ipairs(D.Players())do
-   if target~=own then
-    local same=id~=nil and target:GetAttribute('PartyId')==id
-    if same then P.Joined[target.UserId]=true;P.Sent[target.UserId]=nil
-    elseif P.Joined[target.UserId]then
-     P.Joined[target.UserId]=nil;P.Sent[target.UserId]=nil
-     if ui.outgoing_invites and ui.outgoing_invites[target]==true then ui.outgoing_invites[target]=nil end
-    end
-   end
-  end
-  local members=1
-  if id then members=0;for _,v in ipairs(D.Players())do if v:GetAttribute('PartyId')==id then members+=1 end end end
-  P.Members=members;P.IsOwner=id~=nil and owner==own.UserId
-  if C.AutoAccept and not id then
-   for target in pairs(ui.incoming_invites or {})do
-    if target.Parent and P.Matches(C.AcceptNames,target)then
-     if not D.Alive()or not C.AutoAccept or own:GetAttribute('PartyId')or not P.Matches(C.AcceptNames,target)then return end
-     -- Reserve before yielding; one response per invitation object.
-     local invitation=ui.incoming_invites[target]
-     if invitation and P.LastAccepted~=invitation then
-      P.LastAccepted=invitation
-      D.Accept(ui,target)
-      P.Accepted+=1;P.Status='Accept response sent'
-     end
-     return
-    end
-   end
-  end
-  if not C.AutoAddFriends then P.Status=id and (P.IsOwner and 'Party leader'or'Party member')or(C.AutoAccept and (C.AcceptNames==''and'Enter usernames to accept from'or'Waiting for a listed invitation')or'Waiting for a party');return end
-  if C.InviteNames==''then P.Status='Enter usernames to invite';return end
-  if id and not P.IsOwner then P.Status='Only the party leader can invite';return end
-  local pending=0
-  for target in pairs(ui.outgoing_invites or {})do if target.Parent and target:GetAttribute('PartyId')~=id then pending+=1 elseif target.Parent and not id then pending+=1 end end
-  if members+pending>=6 then P.Status='Party full or invitations pending';return end
-  if D.Now()<P.NextInvite then P.Status='Waiting before next invitation';return end
-  for _,target in ipairs(D.Players())do
-   if target~=own and target.Parent and not target:GetAttribute('PartyId')and not ui.outgoing_invites[target]and not ui.incoming_invites[target]and not P.Sent[target.UserId]and P.Matches(C.InviteNames,target)then
-    if not D.Alive()or not C.AutoAddFriends or not P.Matches(C.InviteNames,target)then return end
-    local currentId=own:GetAttribute('PartyId')
-    if currentId~=id or (currentId and own:GetAttribute('PartyOwnerId')~=own.UserId)or target:GetAttribute('PartyId')then return end
-    local currentMembers=currentId and 0 or 1
-    local currentPending=0
-    for _,member in ipairs(D.Players())do if currentId and member:GetAttribute('PartyId')==currentId then currentMembers+=1 end end
-    for invited in pairs(ui.outgoing_invites or {})do if invited.Parent and (not currentId or invited:GetAttribute('PartyId')~=currentId)then currentPending+=1 end end
-    if currentMembers+currentPending>=6 then P.Status='Party full or invitations pending';return end
-    P.NextInvite=D.Now()+C.InviteInterval
-    if D.Invite(target)==true then P.Sent[target.UserId]=true;ui.outgoing_invites[target]=true;P.Invited+=1;P.Status='Listed player invited to party'else P.Status='Invitation failed — will retry after the interval'end
-    return
-   end
-  end
-  local here,joined,pendingInvite,other,attempted=0,0,0,0,0
-  for _,target in ipairs(D.Players())do if target~=own and target.Parent and P.Matches(C.InviteNames,target)then
-   here+=1
-   local targetId=target:GetAttribute('PartyId')
-   if id and targetId==id then joined+=1
-   elseif targetId then other+=1
-   elseif ui.outgoing_invites[target]or ui.incoming_invites[target]then pendingInvite+=1
-   elseif P.Sent[target.UserId]then attempted+=1 end
-  end end
-  P.Status=here==0 and'Waiting for listed players in this server'or joined==here and'Listed players are in your party'or pendingInvite>0 and'Waiting for invitation responses'or other>0 and'Listed player is in another party'or attempted>0 and'Invitation ended — edit the list or toggle Auto Invite to resend'or'Waiting for an available listed player'
- end
- local D={Self=localPlayer,Alive=function()return fyOwnsExecution()end,UI=function()return services.GUIService.party_ui end,
-  Players=function()return Players:GetPlayers()end,Now=os.clock,
-  Invite=function(target)return services.EndpointsClient.invoke_server('party_invite',target)end,
-  Accept=function(ui,target)ui:respond_invite(target,true)end}
- -- Observe joins immediately, including joins and kicks between worker ticks.
- local function watch(target)
-  local function changed()
-   if not fyOwnsExecution()then return end
-   local id=localPlayer:GetAttribute('PartyId')
-   local candidates=target==localPlayer and Players:GetPlayers()or{target}
-   for _,member in ipairs(candidates)do
-    if member~=localPlayer and id and member:GetAttribute('PartyId')==id then P.Joined[member.UserId]=true;P.Sent[member.UserId]=nil end
-   end
-  end
-  local connection=target:GetAttributeChangedSignal('PartyId'):Connect(changed)
-  Bridge.Connections[#Bridge.Connections+1]=connection;changed()
- end
- for _,target in ipairs(Players:GetPlayers())do watch(target)end
- Bridge.Connections[#Bridge.Connections+1]=Players.PlayerAdded:Connect(watch)
- Bridge.Connections[#Bridge.Connections+1]=Players.PlayerRemoving:Connect(function(target)P.Sent[target.UserId]=nil;P.Joined[target.UserId]=nil end)
- local page=Bridge.Body.Party
- local function node(name,group)
-  local frame=Instance.new('Frame');frame.Name=name;frame.BackgroundTransparency=1;frame.Size=UDim2.fromOffset(400,50);frame.Position=UDim2.fromOffset(0,#page:GetChildren()*60);frame:SetAttribute('PartyGroup',group);frame.Parent=page;return frame
- end
- local function toggle(key,title,desc)
-  Bridge:RegisterToggle(node(key,'Party automation'),title,desc,function()return C[key]end,function(value)C[key]=value==true;if key=='AutoAddFriends'and C[key]then P.Sent={};P.NextInvite=0 end;save()end)
- end
- local function nameInput(key,title,description)
-  Bridge:Register(node(key,'Party automation'),{Kind='NameList',Name=title,Description=description,Get=function()return C[key]end,Options=function()return P.List(key)end,Set=function(value)return P.UpdateList(key,value)end})
- end
- nameInput('InviteNames','Players to invite','')
- toggle('AutoAddFriends','Auto Invite Party','')
- nameInput('AcceptNames','Accept invites only from','')
- toggle('AutoAccept','Auto Accept Party','')
- Bridge:RegisterSlider(node('InviteInterval','Party automation'),'Invite interval (seconds)',function()return C.InviteInterval end,function(value)C.InviteInterval=math.clamp(tonumber(value)or 10,5,60);save()end,5,60,1)
- Bridge:Register(node('PartyStatus','Party overview'),{Kind='Status',Name='Party status',Get=function()return P.LastError or P.Status end})
- Bridge:Register(node('PartyCapacity','Party overview'),{Kind='Status',Name='Members',Get=function()return tostring(P.Members or 1)..' / 6' end})
- Bridge:Register(node('PartyCounters','Party overview'),{Kind='Status',Name='This session',Get=function()return string.format('%d invited · %d accept responses',P.Invited,P.Accepted)end})
- Bridge:Register(node('PartyReadiness','Party overview'),{Kind='Status',Name='Party readiness',Get=function()local _,message=P.Ready();return message end})
- Bridge:Register(node('PartyHostRole','Host controls'),{Kind='Status',Name='Party role',Get=function()
-  local state=fyPartyHost.State()
-  return state.PartyId==nil and'Solo · match controls available'or tonumber(state.OwnerId)==state.UserId and'Party host · Retry / Next / Lobby controls'or'Party member · waiting for host decisions'
- end})
- Bridge:Register(node('PartyReturnLobby','Host controls'),{Kind='Button',Name='Return to Lobby',Get=function()
-  local state=fyPartyHost.State()
-  return state.PartyId~=nil and tonumber(state.OwnerId)~=state.UserId and'Host only'or'Return to Lobby'
- end,Set=function()local ok,reason=fyPartyHost.Return();assert(ok,reason)end})
- task.spawn(function()
-  while fyOwnsExecution()do
-   local ok,err=pcall(P.Step,D)
-   if ok then P.LastError=nil else P.LastError='Party unavailable — retrying';warn('[FYRELITH Party] '..tostring(err))end
-   task.wait(ok and 2 or 10)
-  end
- end)
-end
-
--- In-game private hubs, using the same endpoints as the game's server browser.
-do
- local ready=getgenv().FyrelithGameReady
- local player=game:GetService('Players').LocalPlayer
- local http=game:GetService('HttpService')
- local filename='PrivateServer_'..player.UserId..'.json'
- local C={Enabled=false,Target='My server',FriendServerID=''}
- local P={Config=C,Status='Auto join off',Busy=false,NextAttempt=0,Revision=0,Attempts=0}
- getgenv().FyrelithPrivateServer=P
- local function normalize(value)
-  local id=tostring(value or ''):match('^%s*(.-)%s*$')
-  assert(#id<=128 and (id==''or id:match('^[%w_%-]+$')),'Enter the in-game Server ID, not a Roblox URL')
-  return id
- end
- pcall(function()
-  local saved=http:JSONDecode(readfile(filename))
-  C.Enabled=saved.Enabled==true
-  if saved.Target=="Friend's server"then C.Target=saved.Target end
-  C.FriendServerID=normalize(saved.FriendServerID)
- end)
- local function save()
-  P.Revision+=1;P.NextAttempt=0
-  local ok=pcall(function()writefile(filename,http:JSONEncode(C))end)
-  if not ok then P.Status='Could not save private server settings'end
- end
- function P.ReturnPlan(config)
-  if not config.Enabled then return {Destination='public',FollowPrivate=false,Status='Returning to normal lobby'}end
-  if config.Target=="Friend's server"and normalize(config.FriendServerID)==''then
-   return {Destination='public',FollowPrivate=false,Status='No private server selected · returning to normal lobby'}
-  end
-  return {Destination='public',FollowPrivate=true,Status='Returning to lobby · private server will join automatically'}
- end
- function P.PrepareLobbyReturn()
-  local plan=P.ReturnPlan(C)
-  P.Status=plan.Status;P.ResumeAfterReturn=plan.FollowPrivate;P.NextAttempt=0
-  return plan
- end
- function P.Resolve(config,state,context)
-  assert(type(state)=='table','Private server data unavailable')
-  if config.Target=='My server'then
-   if context.IsHub and tonumber(context.Owner)==context.UserID then return nil,'Already in your private server'end
-   local mine=state.mine
-   if type(mine)~='table'or not mine.id then return nil,'Create your private server in the game first'end
-   if mine.inside==true then return nil,'Already in your private server'end
-   return {Endpoint='hub_my_server',Args={}}
-  end
-  assert(config.Target=="Friend's server",'Invalid private server target')
-  local id=normalize(config.FriendServerID)
-  if id==''then return nil,"Enter your friend's Server ID"end
-  local current=state.current
-  if context.IsHub and type(current)=='table'and tostring(current.id or ''):lower()==id:lower()then return nil,"Already in your friend's private server"end
-  return {Endpoint='hub_join_id',Args={id}}
- end
- local D={Alive=fyOwnsExecution,Now=os.clock,
-  IsLobby=function()return ready.Loader.IsLobby==true end,
-  Context=function()return {IsHub=workspace:GetAttribute('IsHub')==true,Owner=workspace:GetAttribute('HubOwner'),UserID=player.UserId,PartyID=player:GetAttribute('PartyId'),PartyOwnerID=player:GetAttribute('PartyOwnerId')}end,
-  Invoke=function(endpoint,...)return ready.Services.EndpointsClient.invoke_server(endpoint,...)end}
- function P.Run(auto,dependencies)
-  local d=dependencies or D
-  if not d.Alive()or P.Busy or(auto and not C.Enabled)then return false end
-  if d.Now()<P.NextAttempt then
-   if not auto then P.Status='Please wait before joining again'end
-   return false
-  end
-  if not d.IsLobby()then P.Status='Waiting until you return to the lobby';P.NextAttempt=d.Now()+5;return false end
-  local party=d.Context()
-  if auto and party.PartyID~=nil and tonumber(party.PartyOwnerID)~=tonumber(party.UserID)then
-   P.Status='Waiting for party host to choose the private server';P.NextAttempt=d.Now()+5;return false
-  end
-  if C.Target=="Friend's server"and C.FriendServerID==''then P.Status="Enter your friend's Server ID";P.NextAttempt=d.Now()+5;return false end
-  P.Busy=true;P.NextAttempt=d.Now()+30
-  local revision=P.Revision
-  P.Status='Checking private server'
-  local ok,result=xpcall(function()
-   local state=d.Invoke('hub_get_state')
-   if not d.Alive()or revision~=P.Revision or(auto and not C.Enabled)then P.Status='Private server request cancelled';return false end
-   local plan,message=P.Resolve(C,state,d.Context())
-   if not plan then P.Status=message;P.ResumeAfterReturn=false;return false end
-   if not d.IsLobby()then P.Status='Waiting until you return to the lobby';return false end
-   P.Status='Joining private server';P.Attempts+=1
-   local joined=d.Invoke(plan.Endpoint,table.unpack(plan.Args))
-   if joined==true then P.Status='Teleporting to private server';P.ResumeAfterReturn=false;P.NextAttempt=d.Now()+35;return true end
-   P.Status='Private server unavailable · staying in normal lobby';P.ResumeAfterReturn=false;return false
-  end,function()return 'Private server request failed'end)
-  P.Busy=false
-  if not ok then P.Status='Private server connection failed; retrying later';return false end
-  return result
- end
- local page=Bridge.Body.Party
- local function node(name)
-  local n=Instance.new('Frame');n.Name=name;n.Size=UDim2.fromOffset(400,50);n.Position=UDim2.fromOffset(0,#page:GetChildren()*60);n.BackgroundTransparency=1;n:SetAttribute('PartyGroup','Private server');n.Parent=page;return n
- end
- local targetNode=node('PrivateServerTarget')
- local friendInput=node('FriendPrivateServerID')
- friendInput.Visible=C.Target=="Friend's server"
- Bridge:RegisterPicker(targetNode,'Join server',function()return C.Target end,function()
-  return {{id='My server',name='My server',selected=C.Target=='My server'},{id="Friend's server",name="Friend's server",selected=C.Target=="Friend's server"}}
- end,function(entry)
-  assert(entry.id=='My server'or entry.id=="Friend's server",'Invalid private server target')
-  C.Target=entry.id;friendInput.Visible=C.Target=="Friend's server";P.Status='Server target saved';save()
- end)
- Bridge:Register(friendInput,{Kind='Input',Name="Friend's Server ID",Get=function()return C.FriendServerID end,Set=function(value)C.FriendServerID=normalize(value);P.Status='Server ID saved';save()end})
- Bridge:RegisterToggle(node('AutoJoinPrivateServer'),'Auto Join Private Server','',function()return C.Enabled end,function(value)
-  C.Enabled=value==true;save();P.Status=C.Enabled and'Waiting to join private server'or'Auto join off'
- end)
- Bridge:Register(node('JoinPrivateServerNow'),{Kind='Button',Name='Join private server',ActionLabel='Join now',Set=function()return P.Run(false)end})
- Bridge:Register(node('PrivateServerStatus'),{Kind='Status',Name='Private server status',Get=function()return P.Status end})
- local teleport=game:GetService('TeleportService')
- Bridge.Connections[#Bridge.Connections+1]=teleport.TeleportInitFailed:Connect(function(who)
-  if who==player and P.Status=='Teleporting to private server'then
-   P.Status='Teleport failed; retrying later';P.NextAttempt=os.clock()+30
-  end
- end)
- task.spawn(function()
-  while fyOwnsExecution()do
-   if C.Enabled then P.Run(true)end
-   task.wait(2)
-  end
- end)
-end
-
-do
- local E=getgenv()
- local ready=E.FyrelithGameReady
- local http=game:GetService('HttpService')
- local filename='SetupGuide_'..game.Players.LocalPlayer.UserId..'.json'
- local G={Draft={Mode='Plan',Name='',Stage=1}}
- E.FyrelithSetupGuide=G
- local units={}
- pcall(function()local data=ready.Loader.load_data(script,'Units');if type(data)=='table'then units=data end end)
- local function native(name)
-  local node=Bridge.Body:FindFirstChild(name,true)
-  assert(node,'Control unavailable: '..name)
-  return node
- end
- local function saveDraft()pcall(function()writefile(filename,http:JSONEncode(G.Draft))end)end
- local function collection(mode)
-  return mode=='Macro'and E.FyrelithMacro.Library or E.FyrelithAutoPlay.Plans
- end
- function G.Suggest(mode)
-  local prefix=mode=='Macro'and'Guided Macro 'or'Guided Plan '
-  local i=1;while collection(mode)[prefix..i]do i+=1 end
-  return prefix..i
- end
- function G.ValidateName(mode,name)
-  assert(mode=='Plan'or mode=='Macro','Choose Plan or Macro')
-  name=tostring(name or ''):match('^%s*(.-)%s*$')
-  assert(#name>0 and #name<=60,'Use a name between 1 and 60 characters')
-  assert(not name:find('[%c]'),'Name cannot contain control characters')
-  assert(not collection(mode)[name],'That name already exists. Choose another name.')
-  return name
- end
- local function steps()
-  local d=G.Draft
-  if d.Mode=='Macro'then
-   local m=E.FyrelithMacro
-   if m.Config.Name==d.Name and(m.State=='Recording'or m.State=='Finishing')then return m.Steps or {}end
-  end
-  local data=collection(d.Mode)[d.Name]
-  return data and data.Steps or {}
- end
- function G.Info()
-  local a,m=E.FyrelithAutoPlay,E.FyrelithMacro
-  local recording=G.Draft.Mode=='Macro'and m.Config.Name==G.Draft.Name and(m.State=='Recording'or m.State=='Finishing'or(m.State=='Paused'and m.BeforePause=='Recording'))
-   or G.Draft.Mode=='Plan'and a.Config.Name==G.Draft.Name and a.Capture==true
-  local confirmed,pending,places=0,0,0
-  local actions={}
-  local names={Place='Place unit',Upgrade='Upgrade unit',Sell='Sell unit',spawn_unit='Place unit',upgrade_unit_ingame='Upgrade unit',sell_unit_ingame='Sell unit',use_active_attack='Use skill'}
-  for _,step in ipairs(steps())do
-   if step.Confirming then pending+=1 else
-    confirmed+=1
-    if step.Action=='Place'or step.Action=='spawn_unit'then places+=1 end
-    local id,position=step.UnitId,step.CF
-    local args=step.Args
-    if not id and type(args)=='table'then
-     if type(args[1])=='table'and args[1].kind=='Tower'then id=args[1].id;position=args[1].p
-     elseif step.Action=='spawn_unit'and type(args[1])=='string'then
-      local ok,unit=pcall(ready.Services.UnitCollectionServiceClient.get_equipped_unit_by_uuid,args[1])
-      if ok and unit then id=unit.unit_id end
-      if type(args[2])=='table'and args[2].kind=='CFrame'then position=args[2].v end
-     end
-    end
-    local definition=id and units[id]
-    actions[#actions+1]={Name=names[step.Action]or tostring(step.Action),Wave=tonumber(step.Wave)or 0,Time=tonumber(step.Time),Unit=id,UnitName=definition and definition.name,
-     Position=type(position)=='table'and tonumber(position[1])and tonumber(position[3])and string.format('X %.1f · Z %.1f',position[1],position[3])or nil}
-   end
-  end
-  local team,teamEntries={},{}
-  for _,record in ipairs(Bridge.Records)do if record.Kind=='Team'and record.Options then
-   local ok,values=pcall(record.Options)
-   if ok and type(values)=='table'then for _,entry in ipairs(values)do if entry.name~='Empty'then team[#team+1]=entry.name;teamEntries[#teamEntries+1]=entry end end end
-   break
-  end end
-  local data=ready.Loader.LevelData
-  return {Lobby=ready.Loader.IsLobby==true,Recording=recording==true,Finishing=G.Finishing==true,Count=confirmed,Pending=pending,Places=places,Actions=actions,Team=team,TeamEntries=teamEntries,
-   Map=type(data)=='table'and tostring(data._location_name or data.name or data.id or'Current match')or'Current match'}
- end
- function G.Start(mode,name)
-  assert(fyOwnsExecution(),'Guide is no longer active')
-  assert(not ready.Loader.IsLobby,'Enter a match before starting the recording')
-  name=G.ValidateName(mode,name)
-  local a,m=E.FyrelithAutoPlay,E.FyrelithMacro
-  assert(m.State=='Idle'and not m.Config.PlayRequested,'Stop the current Macro first')
-  assert(not a.Capture and not a.Pending,'Stop the current plan capture first')
-  assert(not a.Config.Plan and not a.Config.Place and not a.Config.Upgrade and not a.Config.Smart and not a.Config.Abilities,'Pause Auto Place, Upgrade, Smart Play, Plan and Abilities before recording')
-  if mode=='Macro'then
-   native('MacroName').Text=name
-   assert(m.SaveName(),'Could not create the Macro')
-   m.Record();assert(m.State=='Recording',m.Status or'Macro recording did not start')
-  else
-   local input=native('AutoPlanName');input.Text=name;Bridge:Invoke(input,'FocusLost',true,nil)
-   Bridge:Invoke(native('CreateAutoPlan'),'Activated')
-   assert(a.Capture and a.Plans[name],a.Status or'Plan recording did not start')
-  end
-  G.Draft={Mode=mode,Name=name,Stage=3};saveDraft()
-  return G.Info()
- end
- function G.FinishRecording()
-  local info=G.Info()
-  assert(info.Count>0,'Place a unit first so there is something to review')
-  G.Finishing=true
-  local ok,err=pcall(function()
-   if info.Recording and G.Draft.Mode=='Macro'then
-    local m=E.FyrelithMacro;local token=m.Token
-    m.State='Finishing'
-    -- Match the existing recorder's confirmation window before stopping its hook.
-    task.wait(3.2)
-    assert(fyOwnsExecution()and m.Alive,'Recorder is no longer active')
-    if m.Token==token and m.State=='Finishing'then Bridge:Invoke(native('MacroStop'),'Activated');assert(m.Save(),m.SaveError or'Could not save Macro')end
-   elseif info.Recording then
-    local deadline=os.clock()+4
-    while G.Info().Pending>0 and fyOwnsExecution()and os.clock()<deadline do task.wait(.08)end
-    assert(fyOwnsExecution(),'Recorder is no longer active')
-    assert(G.Info().Pending==0,'Waiting for the game to confirm the latest action')
-    Bridge:Invoke(native('SaveAutoPlan'),'Activated')
-   end
-   assert(not G.Info().Recording,'Recording is still finishing. Try again in a moment.')
-  end)
-  G.Finishing=false
-  if not ok then error(err,0)end
-  G.Draft.Stage=4;saveDraft();return G.Info()
- end
- function G.Save()
-  local info=G.Info();assert(not info.Recording and info.Count>0 and info.Pending==0,'Finish recording before saving')
-  if G.Draft.Mode=='Macro'then
-   local m=E.FyrelithMacro
-   assert(m.State=='Idle','Stop the current Macro first')
-   if m.Config.Name~=G.Draft.Name then assert(m.Select(G.Draft.Name),'Could not select the Macro')end
-   assert(m.Save(),m.SaveError or'Could not save Macro')
-  else assert(E.FyrelithAutoPlay.Save(),'Could not save plan')end
-  G.Draft.Stage=5;saveDraft();return true
- end
- function G.Reset()
-  assert(not G.Info().Recording,'Finish this recording before starting a new setup')
-  G.Draft={Mode='Plan',Name='',Stage=1};saveDraft()
- end
- pcall(function()
-  local d=http:JSONDecode(readfile(filename))
-  if(d.Mode=='Plan'or d.Mode=='Macro')and type(d.Name)=='string'and collection(d.Mode)[d.Name]then
-   G.Draft={Mode=d.Mode,Name=d.Name,Stage=d.Stage==5 and 5 or 4}
-  end
- end)
-end
-
-fyExecution.Starting=false;fyExecution.Ready=true
-Bridge.Ready=true
-
-local UnitCyclePlanner={}
-function UnitCyclePlanner.Select(casters,now)
- local best
- for _,c in ipairs(casters)do
-  if c.Ready and not c.NativeAuto and not c.Active and(now>=(c.HoldUntil or 0))and(c.Charge==nil or c.Charge>0)then
-   local score=c.Charge and c.Charge/math.max(1,c.MaxCharge or 100)or 0
-   local previous=best and(best.Charge and best.Charge/math.max(1,best.MaxCharge or 100)or 0)
-   if not best or score>previous or score==previous and((c.LastCast or 0)<(best.LastCast or 0)or(c.LastCast or 0)==(best.LastCast or 0)and tostring(c.Key)<tostring(best.Key))then best=c end
-  end
- end
- return best
-end
-function UnitCyclePlanner.Rukia(state,casters,now)
- for _,c in ipairs(casters)do if c.Active then state.Active=c.Key;state.Started=state.Started or now;state.EndAt=nil;return nil,'Rukia active'end end
- if state.Active then
-  if now-(state.Started or now)<1.5 then return nil,'Confirming Rukia activation'end
-  state.Active=nil;state.Started=nil;state.EndAt=now+2
- end
- if now<(state.EndAt or 0)then return nil,'Recharging · 2-second handoff'end
- if now<(state.ObserveUntil or 0)then return nil,'Reading charge bars'end
- local selected=UnitCyclePlanner.Select(casters,now)
- return selected,selected and'Activating highest charge'or'Waiting for available charge'
-end
-function UnitCyclePlanner.Homura(state,casters,now)
- local current
- for _,c in ipairs(casters)do
-  if c.Key==state.Active then current=c end
-  if c.Active then
-   state.Active=c.Key;state.SeenUsing=true;state.EndAt=nil
-   return nil,'Timestop active'
-  end
- end
- if state.Active then
-  if current and current.GlobalKnown and current.GlobalRemaining>0 then return nil,'Timestop global cooldown'end
-  if state.EffectUntil and now<state.EffectUntil then return nil,'Timestop effect active'end
-  local ended=not current or state.SeenUsing or state.EffectUntil and now>=state.EffectUntil or current.GlobalKnown and current.GlobalRemaining<=0
-  if not ended then return nil,'Waiting for confirmed Timestop end'end
-  state.Active=nil;state.SeenUsing=nil;state.EffectUntil=nil;state.EndAt=now+.25
- end
- if now<(state.EndAt or 0)then return nil,'Timestop handoff'end
- local selected=UnitCyclePlanner.Select(casters,now)
- return selected,selected and'Activating ready Homura'or'Waiting for Timestop cooldown'
-end
-function UnitCyclePlanner.Adaptation(attrs,order)
- if attrs.Completed or(tonumber(attrs.Takedowns)or 0)<50 then return nil end
- for _,key in ipairs(order)do if attrs[key]~=true then return key end end
-end
-
-do
- local E=getgenv()
- local previous=E.FyrelithUnitCycles;if previous then previous.Alive=false end
- local r=E.FyrelithGameReady
- local L,EP=r.Loader,r.Services.EndpointsClient
- local root=game.ReplicatedStorage.src.Loader
- local Rep=L.load_client_service(root,'AttacksReplicate')
- local Attacks=L.load_data(root,'Attacks')
- local Players=game:GetService('Players');local owner=Players.LocalPlayer
- local collection=game:GetService('CollectionService')
- local H=game:GetService('HttpService')
- local file='UnitCycles_'..owner.UserId..'.json'
- local C={Rukia=false,Homura=false,Ritual=false,MahoragaMode=false,Adapt=false,Mode=2,AdaptOrder='Wings / Force / Slash'}
- local orders={
-  ['Wings / Force / Slash']={'_mahoraga_adaptation_flying','_mahoraga_adaptation_knockback','_mahoraga_adaptation_third'},
-  ['Wings / Slash / Force']={'_mahoraga_adaptation_flying','_mahoraga_adaptation_third','_mahoraga_adaptation_knockback'},
-  ['Force / Wings / Slash']={'_mahoraga_adaptation_knockback','_mahoraga_adaptation_flying','_mahoraga_adaptation_third'},
-  ['Force / Slash / Wings']={'_mahoraga_adaptation_knockback','_mahoraga_adaptation_third','_mahoraga_adaptation_flying'},
-  ['Slash / Wings / Force']={'_mahoraga_adaptation_third','_mahoraga_adaptation_flying','_mahoraga_adaptation_knockback'},
-  ['Slash / Force / Wings']={'_mahoraga_adaptation_third','_mahoraga_adaptation_knockback','_mahoraga_adaptation_flying'}}
- pcall(function()
-  local saved=H:JSONDecode(readfile(file))
-  for key,value in pairs(C)do if type(saved[key])==type(value)then C[key]=saved[key]end end
- end)
- C.Mode=math.clamp(math.floor(tonumber(C.Mode)or 2),1,3)
- if not orders[C.AdaptOrder]then C.AdaptOrder='Wings / Force / Slash'end
- local U={Alive=true,Config=C,States={},Pending={},Holds=setmetatable({},{__mode='k'}),Samples=setmetatable({},{__mode='k'}),RukiaState={},HomuraState={},History={},RequestThreads=setmetatable({},{__mode='k'}),Planner=UnitCyclePlanner}
- E.FyrelithUnitCycles=U
- local function value(stats,key)local x=stats and stats:FindFirstChild(key);return x and x:IsA('ValueBase')and x.Value end
- local function save()local ok=pcall(writefile,file,H:JSONEncode(C));assert(ok,'Could not save unit-cycle settings')end
- function U.IsManaged(model)
-  local id=value(model and model:FindFirstChild('_stats'),'id')
-  return id=='rukia_bankai_evolved'and C.Rukia or id=='homura_evolved'and C.Homura or id=='megumi2_evolved'and C.Ritual or id=='mahoraga'and(C.MahoragaMode or C.Adapt)
- end
- local function owned(model)
-  local stats=model and model:FindFirstChild('_stats')
-  return model and model.Parent and value(stats,'player')==owner and value(stats,'state')~='dead'and not collection:HasTag(model,'dying_units')
- end
- local function effectDuration(attack)
-  if type(attack)~='table'then return nil end
-  local duration=tonumber(attack._global_freeze and attack._global_freeze.duration)
-  for _,aoe in pairs(attack.aoe or{})do
-   local hit=aoe.hit or{}
-   duration=math.max(duration or 0,tonumber(hit._global_freeze and hit._global_freeze.duration)or 0)
-   for _,buff in pairs(hit.buffs or{})do if buff.name=='freeze'then duration=math.max(duration or 0,tonumber(buff.time)or 0)end end
-  end
-  return duration and duration>0 and duration or nil
- end
- local function snapshot(model,now)
-  local stats=model:FindFirstChild('_stats');local id=value(stats,'id')
-  local active=value(stats,'active_attack');if not active or active=='nil'then return {Key=model,Model=model,Id=id,Ready=false}end
-  local ok,queued,ready,_,remaining=pcall(Rep.get_current_active_attack_cooldown,model,active)
-  local bar=stats:FindFirstChild('unit_bar')
-  local charge=bar and tonumber(bar.Value)
-  local knownUsing=value(stats,'active_queued_or_using')==true
-  local attack=Attacks[active];local name=type(attack)=='table'and tostring(attack.name or''):lower()or''
-  local isActive=knownUsing or name:find('turn off',1,true)~=nil
-  local prior=U.Samples[model]
-  local draining=prior and prior.Draining or false
-  if charge and prior and now-prior.At>=.1 then
-   if charge<prior.Charge-.01 then draining=true elseif charge>prior.Charge+.01 or charge<=0 then draining=false end
-   U.Samples[model]={Charge=charge,At=now,Draining=draining}
-  elseif charge and not prior then U.Samples[model]={Charge=charge,At=now,Draining=false}end
-  if id=='rukia_bankai_evolved'and draining and charge and charge>0 then isActive=true end
-  local global=Rep.GLOBAL_ATTACK_COOLDOWNS and Rep.GLOBAL_ATTACK_COOLDOWNS[active]
-  local globalRemaining=global and math.max(0,(tonumber(global.cooldown)or 0)-(tick()-(tonumber(global.cast_time)or 0)))or 0
-  return {Key=model,Model=model,Id=id,Attack=active,Ready=ok and ready==true and queued~=true,Active=isActive,Charge=charge,MaxCharge=bar and tonumber(bar:GetAttribute('max'))or 100,LastCast=tonumber(value(stats,'last_active_cast'))or 0,NativeAuto=model:GetAttribute('_auto_active')==true,HoldUntil=U.Holds[model],GlobalKnown=global~=nil,GlobalRemaining=globalRemaining,Duration=effectDuration(attack),Stats=stats}
- end
- local function pending(kind,now)
-  local p=U.Pending[kind];if not p then return false end
-  if not owned(p.Model)then U.Pending[kind]=nil;return false end
-  local stats=p.Model:FindFirstChild('_stats')
-  local confirmed
-  if p.Action=='Adapt'then confirmed=p.Model:GetAttribute(p.Choice)==true
-  elseif p.Action=='Mode'then confirmed=p.Model:GetAttribute('_mahoragamode')~=p.Before
-  else confirmed=(tonumber(value(stats,'last_active_cast'))or 0)>p.Before end
-  if confirmed then
-   U.Pending[kind]=nil
-   if p.Action=='Adapt'or p.Action=='Mode'then U.Holds[p.Model]=now+.5 end
-   U.History[#U.History+1]={Kind=kind,Action=p.Action,At=now};if #U.History>24 then table.remove(U.History,1)end
-   if kind=='Rukia'or kind=='Homura'then
-    local state=kind=='Rukia'and U.RukiaState or U.HomuraState
-    state.Active=p.Model;state.Started=now;state.SeenUsing=false
-    if p.Duration then state.EffectUntil=now+p.Duration end
-   end
-   U.States[kind]='Skill confirmed';return true
-  end
-  if not p.Returned or now-p.At<3 then U.States[kind]='Confirming skill';return true end
-  -- Unknown outcomes never cause a second toggle; require a fresh ready state.
-  local current=snapshot(p.Model,now)
-  if not p.Declined and(not current.Ready or current.Active)then U.States[kind]='Waiting for native confirmation';return true end
-  U.Holds[p.Model]=now+3;U.Pending[kind]=nil;U.States[kind]=p.Error and'Skill request failed · retrying later'or'Skill not confirmed · retrying later'
-  return true
- end
- local function send(kind,caster,action,choice)
-  if U.Pending[kind]then return end
-  local model=caster.Model
-  local p={Model=model,At=os.clock(),Before=action=='Mode'and model:GetAttribute('_mahoragamode')or caster.LastCast or 0,Action=action,Choice=choice,Duration=caster.Duration}
-  U.Pending[kind]=p
-  task.spawn(function()
-   if not U.Alive or not fyOwnsExecution()or not owned(model)or not fyPartyHost.Ready()then U.Pending[kind]=nil;return end
-   local enabled=kind=='Rukia'and C.Rukia or kind=='Homura'and C.Homura or kind=='Mahoraga'and(action=='Adapt'and C.Adapt or action=='Mode'and C.MahoragaMode or action=='Ritual'and C.Ritual)
-   if not enabled then U.Pending[kind]=nil;return end
-   local thread=coroutine.running();U.RequestThreads[thread]=true
-   local ok,result
-   if action=='Adapt'then ok,result=pcall(EP.invoke_server,'use_custom_unit_control',model,choice)
-   else ok,result=pcall(EP.invoke_server,'use_active_attack',model)end
-   U.RequestThreads[thread]=nil
-   if U.Pending[kind]~=p then return end
-   p.Returned=true;p.Declined=ok and result==false;p.Error=not ok and tostring(result)or nil
-  end)
- end
- local function scan()
-  local now=os.clock();local sets={Rukia={},Homura={},Mahoraga={},Ritual={}}
-  local folder=workspace:FindFirstChild('_UNITS')
-  for _,model in ipairs(folder and folder:GetChildren()or{})do if owned(model)then
-   local id=value(model:FindFirstChild('_stats'),'id')
-   local key=id=='rukia_bankai_evolved'and'Rukia'or id=='homura_evolved'and'Homura'or id=='mahoraga'and'Mahoraga'or id=='megumi2_evolved'and'Ritual'
-   if key then sets[key][#sets[key]+1]=snapshot(model,now)end
-  end end
-  return sets,now
- end
- function U.Step()
-  if not(C.Rukia or C.Homura or C.Ritual or C.Adapt or C.MahoragaMode)then for _,k in ipairs({'Rukia','Homura','Mahoraga'})do U.States[k]='Disabled'end;return end
-  local api=E.FyrelithAutoJoin
-  if L.IsLobby or api and api.MatchEnded then
-   U.RukiaState={};U.HomuraState={};U.Samples=setmetatable({},{__mode='k'})
-   for _,k in ipairs({'Rukia','Homura','Mahoraga'})do U.States[k]='Waiting for match'end;return
-  end
-  local allowed,reason=fyPartyHost.Ready();if not allowed then for _,k in ipairs({'Rukia','Homura','Mahoraga'})do U.States[k]=reason end;return end
-  local macro=E.FyrelithMacro;if macro and macro.State~='Idle'then for _,k in ipairs({'Rukia','Homura','Mahoraga'})do U.States[k]='Paused for Macro'end;return end
-  local sets,now=scan()
-  for _,key in ipairs({'Rukia','Homura'})do
-   if not C[key]then U.States[key]='Disabled'
-   elseif pending(key,now)then
-   elseif #sets[key]==0 then U.States[key]='Waiting for placed '..key
-   else
-    local selected,message
-    if key=='Rukia'then U.RukiaState.ObserveUntil=U.RukiaState.ObserveUntil or now+.5;selected,message=UnitCyclePlanner.Rukia(U.RukiaState,sets[key],now)
-    else selected,message=UnitCyclePlanner.Homura(U.HomuraState,sets[key],now)end
-    U.States[key]=message
-    if selected then
-     if key=='Rukia'and selected.Charge==nil then U.States[key]='Waiting for native charge bar'
-     else send(key,selected,'Skill')end
-    end
-   end
-  end
-  if not(C.Ritual or C.Adapt or C.MahoragaMode)then U.States.Mahoraga='Disabled';return end
-  if pending('Mahoraga',now)then return end
-  for _,caster in ipairs(sets.Mahoraga)do
-   local model=caster.Model
-   if now<(U.Holds[model]or 0)or caster.NativeAuto then continue end
-   if C.Adapt then
-    local attrs=model:GetAttributes();attrs.Completed=attrs._mahoraga_completed;attrs.Takedowns=attrs._mahoraga_takedowns
-    local choice=UnitCyclePlanner.Adaptation(attrs,orders[C.AdaptOrder])
-    if choice then U.States.Mahoraga='Choosing adaptation';send('Mahoraga',caster,'Adapt',choice);return end
-   end
-   local mode=tonumber(model:GetAttribute('_mahoragamode'))or 1
-   if C.MahoragaMode and mode and mode~=C.Mode and not caster.Active then U.States.Mahoraga='Switching combat mode';send('Mahoraga',caster,'Mode');return end
-  end
-  if C.Ritual and #sets.Mahoraga==0 then
-   local caster=UnitCyclePlanner.Select(sets.Ritual,now)
-   if caster then U.States.Mahoraga='Starting Ritual';send('Mahoraga',caster,'Ritual');return end
-  end
-  U.States.Mahoraga=#sets.Mahoraga>0 and'Mahoraga ready · watching adaptations'or'Waiting for Ritual / Mahoraga'
- end
- local page=Bridge.Body['Auto Play']
- local function node(name,group)
-  local n=Instance.new('Frame');n.Name='UnitCycle_'..name;n.BackgroundTransparency=1;n.Size=UDim2.fromOffset(400,50);n.Position=UDim2.fromOffset(0,1200+#page:GetChildren()*60);n:SetAttribute('FeatureGroup',group);n.Parent=page;return n
- end
- local function toggle(key,title,group)
-  Bridge:RegisterToggle(node(key,group),title,'',function()return C[key]end,function(value)
-   C[key]=value==true
-   if key=='Rukia'then U.RukiaState={}elseif key=='Homura'then U.HomuraState={}end
-   save()
-  end)
- end
- toggle('Rukia','Rukia Cycle','Rukia Cycle')
- Bridge:Register(node('RukiaStatus','Rukia Cycle'),{Kind='Status',Name='Rukia status',Get=function()return C.Rukia and(U.States.Rukia or'Waiting')or'Disabled'end})
- toggle('Homura','Homura Cycle','Homura Cycle')
- Bridge:Register(node('HomuraStatus','Homura Cycle'),{Kind='Status',Name='Homura status',Get=function()return C.Homura and(U.States.Homura or'Waiting')or'Disabled'end})
- toggle('Ritual','Auto Ritual','Mahoraga')
- toggle('MahoragaMode','Set combat mode','Mahoraga')
- Bridge:RegisterPicker(node('Mode','Mahoraga'),'Combat mode',function()return({'BOSS','DEF','ATK'})[C.Mode]end,function()
-  local out={};for i,name in ipairs({'BOSS','DEF','ATK'})do out[#out+1]={id=i,name=name}end;return out
- end,function(entry)C.Mode=math.clamp(math.floor(tonumber(entry.id)or 2),1,3);save()end)
- toggle('Adapt','Auto Adaptation','Mahoraga')
- Bridge:RegisterPicker(node('AdaptOrder','Mahoraga'),'Adaptation order',function()return C.AdaptOrder end,function()
-  local out={};for name in pairs(orders)do out[#out+1]={id=name,name=name}end;table.sort(out,function(a,b)return a.name<b.name end);return out
- end,function(entry)assert(orders[entry.id],'Invalid adaptation order');C.AdaptOrder=entry.id;save()end)
- Bridge:Register(node('MahoragaStatus','Mahoraga'),{Kind='Status',Name='Mahoraga status',Get=function()return U.States.Mahoraga or'Disabled'end})
- task.spawn(function()while U.Alive and fyOwnsExecution()do
-  local ok,err=pcall(U.Step);U.LastError=not ok and tostring(err)or nil
-  if not ok then for _,key in ipairs({'Rukia','Homura','Mahoraga'})do U.States[key]='Native skill data unavailable'end end
-  task.wait(.15)
- end end)
-end
-
-do
- local E=getgenv()
- local R={Status='Auto Retry off',Attempts=0,NextAttempt=0}
- E.FyrelithRetry=R
- function R.Reset()R.Token=nil;R.Pending=nil;R.Accepted=false;R.Attempts=0;R.NextAttempt=0;R.Status='Waiting for match results'end
- function R.Decide(c)
-  if c.Blocked then return nil,c.Blocked end
-  if c.Dungeon then
-   if c.DungeonDead then return {Endpoint='dungeon_continue_death',Args={}},'Retrying Dungeon' end
-   return nil,'Dungeon rooms cannot replay · use Auto Next Room to continue'
-  end
-  if c.Tower then
-   return {Endpoint=c.GroupReplay and'set_game_finished_vote'or'request_start_infinite_tower_from_game',Args=c.GroupReplay and{'replay'}or{}},'Retrying Infinite Mansion'
-  end
-  if c.Contract then
-   if c.ContractSlot==nil then return nil,'Waiting for the recorded Contract slot'end
-   return {Endpoint='set_game_finished_vote',Args={'eventcontract',{_eventcontractslot=c.ContractSlot}}},'Retrying the same Contract slot'
-  end
-  if c.Portal then
-   if not c.PortalOwner then return nil,'Waiting for the Portal owner'end
-   if not c.PortalUUID then return nil,'No valid Portal remains for this stage'end
-   return {Endpoint='set_game_finished_vote',Args={'replay',{item_uuid=c.PortalUUID}}},'Replaying a compatible Portal'
-  end
-  if c.CanReplay then return {Endpoint='set_game_finished_vote',Args={'replay'}},'Retrying '..tostring(c.Mode or'match')end
-  return nil,'This stage does not currently allow Replay'
- end
- local ready=E.FyrelithGameReady
- local L,EP=ready.Loader,ready.Services.EndpointsClient
- local root=game.ReplicatedStorage.src.Loader
- local core=L.load_core_service(root,'LevelServiceCore')
- local tower=L.load_core_service(root,'InfiniteTowerServiceCore')
- local settings=L.load_data(root,'GameplaySettings')
- local player=game.Players.LocalPlayer
- function R.Context(results)
-  local level=L.LevelData or{}
-  local victory=results.settings and results.settings.victory
-  local isPortal=level._is_map_or_portal_level==true
-  local portalOwner=not level._owner_player_userid or tonumber(level._owner_player_userid)==player.UserId
-  local uuid
-  if isPortal and portalOwner then
-   local inventory=ready.Services.UnitCollectionServiceClient.session.inventory.inventory_profile_data.unique_items or{}
-   local valid={}
-   for _,item in pairs(inventory)do if item.uuid then
-    local ok,allowed=pcall(core.is_valid_replay_portal_item,ready.Services.UnitCollectionServiceClient.session,item.uuid)
-    if ok and allowed then valid[#valid+1]=item.uuid end
-   end end
-   table.sort(valid,function(a,b)return tostring(a)<tostring(b)end);uuid=valid[1]
-  end
-  local canReplay=settings.REPLAY_GAMEMODES and settings.REPLAY_GAMEMODES[level._gamemode]==true
-  local ok,value=pcall(core.level_can_replay,level,victory);canReplay=canReplay or ok and value==true
-  -- The native result UI also exposes valid owner-only Story Replay.
-  canReplay=canReplay or results.NextRetry and results.NextRetry.Visible==true
-  local group=false
-  if level._gamemode=='infinite_tower'then local success,room=pcall(tower.get_group_replay_room,level,victory);group=success and room~=nil and room~=false end
-  local profile=ready.Services.UnitCollectionServiceClient.session.profile_data
-  local dungeon=profile and profile.dungeon_data
-  local extra=E.FyrelithDungeonExtras
-  return {Mode=level._gamemode or level.id,Dungeon=level._dungeon~=nil and level._dungeon~=false,DungeonDead=type(dungeon)=='table'and dungeon._dead==true,
-   Tower=level._gamemode=='infinite_tower',GroupReplay=group,Contract=type(level._event_contract)=='table',ContractSlot=type(level._event_contract)=='table'and level._event_contract.slot,
-   Portal=isPortal,PortalOwner=portalOwner,PortalUUID=uuid,CanReplay=canReplay==true,
-   Blocked=level._dungeon and extra and(extra.PendingReturn or extra.StoppedAtOneLife)and'Dungeon safety stop takes priority over Retry'or nil}
- end
- function R.Try(results)
-  local api=E.FyrelithAutoJoin
-  if not api or not api.Config.AutoRetry then R.Status='Auto Retry off';return false end
-  local allowed,reason=fyPartyHost.Ready();if not allowed then R.Status=reason;return true end
-  allowed,reason=fyPartyHost.Check(false,'Retry / Next');if not allowed then R.Status=reason;return true end
-  local token=game.JobId..':'..tostring(results.settings or results)
-  if R.Token~=token then R.Token=token;R.Attempts=0;R.Accepted=false;R.Pending=nil;R.NextAttempt=0 end
-  if R.Accepted then R.Status='Replay sent · waiting for server transition';return true end
-  if R.Pending then R.Status='Waiting for Replay response';return true end
-  if R.Attempts>=3 then R.Status='Replay was not confirmed · server rejected or delayed the request';return true end
-  if os.clock()<R.NextAttempt then return true end
-  local action,message=R.Decide(R.Context(results));R.Status=message
-  if not action then return true end
-  local pending={Token=token};R.Pending=pending;R.Attempts+=1;R.NextAttempt=os.clock()+math.min(20,5*R.Attempts)
-  task.spawn(function()
-   if not fyOwnsExecution()or not api.Config.AutoRetry or R.Pending~=pending then if R.Pending==pending then R.Pending=nil end;return end
-   if not fyPartyHost.Ready()or not fyPartyHost.Check(false,'Retry / Next')then R.Pending=nil;return end
-   local ok,result=pcall(EP.invoke_server,action.Endpoint,table.unpack(action.Args))
-   if R.Pending~=pending then return end
-   R.Pending=nil
-   R.Accepted=ok and result~=false
-   R.Status=R.Accepted and'Replay sent · waiting for server transition'or'Replay not confirmed · checking again after cooldown'
-  end)
-  return true
- end
- Bridge.Connections[#Bridge.Connections+1]=game:GetService('TeleportService').TeleportInitFailed:Connect(function(who)
-  if who==player and R.Token then R.Accepted=false;R.Pending=nil;R.NextAttempt=os.clock()+15;R.Status='Replay teleport failed · retrying after cooldown'end
- end)
- local node=Instance.new('Frame');node.Name='AutoRetryStatus';node.BackgroundTransparency=1;node.Size=UDim2.fromOffset(400,50);node.Position=UDim2.fromOffset(0,900);node:SetAttribute('FeatureGroup','Match flow');node.Parent=Bridge.Body.Main
- Bridge:Register(node,{Kind='Status',Name='Auto Retry status',Get=function()local api=E.FyrelithAutoJoin;return api and api.Config.AutoRetry and R.Status or'Auto Retry off'end})
-end
-
-do
- local E=getgenv();local L=E.FyrelithGameReady.Loader
- local H=game:GetService('HttpService');local player=game.Players.LocalPlayer
- local file='LeaveAtWave_'..player.UserId..'.json'
- local C={Enabled=false,Wave=20}
- pcall(function()local saved=H:JSONDecode(readfile(file));if type(saved.Enabled)=='boolean'then C.Enabled=saved.Enabled end;if type(saved.Wave)=='number'then C.Wave=math.clamp(math.floor(saved.Wave),1,10000)end end)
- local A={Config=C,Status='Disabled',Pending=false,Attempts=0,NextAttempt=0,InFlight=false}
- E.FyrelithLeaveAtWave=A
- local function reset()A.Pending=false;A.Holding=false;A.Attempts=0;A.NextAttempt=0;A.LastWave=0;A.Done=false end
- local function save()assert(pcall(writefile,file,H:JSONEncode(C)),'Could not save leave-at-wave settings')end
- function A.Step(d)
-  if not d.Alive()then return end
-  if d.Lobby()then reset();A.Status=C.Enabled and'Waiting for match'or'Disabled';return end
-  if not C.Enabled then reset();A.Status='Disabled';return end
-  local wave=tonumber(d.Wave())or 0
-  if wave<(A.LastWave or 0)then reset()end;A.LastWave=wave
-  if wave<C.Wave and not A.Pending then A.Status='Leave at wave '..C.Wave..' · current '..wave;return end
-  A.Pending=true
-  if A.Done or A.InFlight then A.Status='Lobby return sent · waiting for server';return end
-  local allowed,reason=d.CanReturn();if not allowed then A.Holding=false;A.Status=reason;return end
-  A.Holding=true
-  if A.Attempts>=3 then A.Status='Lobby return not confirmed · toggle Auto Leave at Wave to retry';return end
-  if d.Now()<A.NextAttempt then return end
-  local safe,message=d.SaveRecording();if safe==false then A.Status=message or'Waiting to save recording';return end
-  A.InFlight=true;A.Attempts+=1;A.NextAttempt=d.Now()+15
-  local ok,result=pcall(d.Exit)
-  A.InFlight=false
-  A.Done=ok and result~=false
-  A.Status=A.Done and'Lobby return sent at wave '..wave or'Lobby return failed · retrying after cooldown'
- end
- local D={Alive=fyOwnsExecution,Lobby=function()return L.IsLobby end,Wave=function()local w=workspace:FindFirstChild('_wave_num');return w and w.Value or 0 end,Now=os.clock,
-  CanReturn=function()return fyPartyHost.Check(false)end,
-  SaveRecording=function()
-   local m=E.FyrelithMacro
-   if m and m.State=='Finishing'then return false,'Finishing Macro save before leaving'end
-   if m and(m.State=='Recording'or m.State=='Paused'and m.BeforePause=='Recording')then local ok,result=pcall(m.Save);if not ok or result==false then return false,'Macro save failed · lobby return paused'end end
-   local a=E.FyrelithAutoPlay
-   if a and a.Capture then
-    local p=a.Plans[a.Config.Name];for _,step in ipairs(p and p.Steps or{})do if step.Confirming then return false,'Finishing Plan confirmation before leaving'end end
-    if not a.Save()then return false,'Plan save failed · lobby return paused'end
-   end
-   return true
-  end,
-  Exit=function()
-   local allowed=fyPartyHost.Check(false);if not allowed then return false end
-   local destination=player:GetAttribute('ReturnServerOwner')and'hub'or nil
-   return E.FyrelithGameReady.Services.EndpointsClient.invoke_server('teleport_back_to_lobby',destination)
-  end}
- local function node(name)local n=Instance.new('Frame');n.Name=name;n.BackgroundTransparency=1;n.Size=UDim2.fromOffset(400,50);n.Position=UDim2.fromOffset(0,950+#Bridge.Body.Main:GetChildren()*10);n:SetAttribute('FeatureGroup','Leave at wave');n.Parent=Bridge.Body.Main;return n end
- Bridge:RegisterToggle(node('AutoLeaveAtWave'),'Auto Leave at Wave','',function()return C.Enabled end,function(value)C.Enabled=value==true;reset();save()end)
- Bridge:Register(node('LeaveAtWaveTarget'),{Kind='Input',Name='Leave at wave',Get=function()return tostring(C.Wave)end,Set=function(value)
-  local n=tonumber(value);assert(n and n==math.floor(n)and n>=1 and n<=10000,'Enter a whole wave number from 1 to 10000');C.Wave=n;reset();save()
- end})
- Bridge:Register(node('LeaveAtWaveStatus'),{Kind='Status',Name='Wave exit status',Get=function()return A.Status end})
- Bridge.Connections[#Bridge.Connections+1]=game:GetService('TeleportService').TeleportInitFailed:Connect(function(who)if who==player and A.Pending then A.Done=false;A.NextAttempt=os.clock()+15;A.Status='Teleport failed · retrying after cooldown'end end)
- task.spawn(function()while fyOwnsExecution()do local ok,err=pcall(A.Step,D);if not ok then A.InFlight=false;A.Status='Wave exit unavailable · retrying';A.LastError=tostring(err)end;task.wait(.5)end end)
-end
-
-]====================],'Aurora Fyrelith Game Controllers')
-        assert(run,message)
-        run()
-        Bridge.Ready=true
-        Bridge:Sync()
-        Hub:SetHealth('ready')
-        Hub:Notify('Game controllers connected')
-        task.spawn(function()while Bridge.Alive and Hub.Alive do
-            local synced,syncError=pcall(Bridge.Sync,Bridge)
-            if not synced then Bridge.Errors[#Bridge.Errors+1]=tostring(syncError)end
-            Hub:SetHealth(synced and 'ready'or'warning')
-            task.wait(.75)
-        end end)
-    end,debug.traceback)
-    if not ok then
-        Bridge.Error=tostring(err)
-        Hub:SetHealth('stopped')
-        warn('[Aurora game integration] '..tostring(err))
-        Hub:Notify('Game connection failed. Check Output.')
-    end
+]===========================================], 'Fyrelith Reset All Settings'))()
+fyExecution.Starting=false fyExecution.Ready=true fyExecution.CompletedAt=os.clock()
+fyExecution.Gui.Destroying:Connect(function()if fyOwnsExecution()then fyExecution.Ready=false end end)
+end,debug.traceback)
+if not startupOK then C.Report('startup',startupError)end
+if not startupOK and fyOwnsExecution()then fyExecution.Starting=false fyExecution.Ready=false fyExecution.Error=startupError getgenv().FyrelithStartupError=startupError warn(startupError)end
 end)
-return Hub
-
-]======================]
+]=======]
 getgenv().FyrelithScriptSource=source
-local run,message=loadstring(source,'FYRELITH Default')
-assert(run,message)
-return run()
+local run,err=loadstring(source)
+assert(run,err)
+run()
+
