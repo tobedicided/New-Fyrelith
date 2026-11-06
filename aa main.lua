@@ -1,3 +1,24 @@
+-- FYRELITH mobile startup diagnostics. No external uploads.
+local players=game:GetService('Players')
+local player=players.LocalPlayer
+local deadline=os.clock()+15
+while not player and os.clock()<deadline do task.wait(.1);player=players.LocalPlayer end
+assert(player,'FYRELITH: LocalPlayer unavailable')
+local parent=player:WaitForChild('PlayerGui',15)
+assert(parent,'FYRELITH: PlayerGui unavailable')
+local old=parent:FindFirstChild('FyrelithStartupDiagnostic');if old then old:Destroy()end
+local gui=Instance.new('ScreenGui');gui.Name='FyrelithStartupDiagnostic';gui.ResetOnSpawn=false;gui.IgnoreGuiInset=true;gui.DisplayOrder=2147483646;gui.Parent=parent
+local panel=Instance.new('Frame');panel.Size=UDim2.new(.9,0,.55,0);panel.Position=UDim2.fromScale(.05,.2);panel.BackgroundColor3=Color3.fromRGB(18,18,22);panel.Parent=gui
+local text=Instance.new('TextLabel');text.BackgroundTransparency=1;text.Position=UDim2.fromOffset(14,12);text.Size=UDim2.new(1,-28,1,-68);text.Font=Enum.Font.GothamMedium;text.TextSize=15;text.TextColor3=Color3.new(1,1,1);text.TextWrapped=true;text.TextXAlignment=Enum.TextXAlignment.Left;text.TextYAlignment=Enum.TextYAlignment.Top;text.Parent=panel
+local close=Instance.new('TextButton');close.Text='Close';close.Size=UDim2.fromOffset(100,36);close.Position=UDim2.new(1,-114,1,-48);close.Parent=panel;close.Activated:Connect(function()gui:Destroy()end)
+local function status(message)if gui.Parent then text.Text='FYRELITH · STARTUP CHECK\n'..message end;warn('[FYRELITH startup] '..message)end
+status('1. File started\nWaiting for Roblox to finish loading…')
+task.wait()
+if not game:IsLoaded()then game.Loaded:Wait()end
+status('2. GameId: '..tostring(game.GameId)..'\nPlaceId: '..tostring(game.PlaceId))
+if game.GameId~=3183403065 then status('Stopped: this is not the supported Anime Adventures experience.\nGameId: '..tostring(game.GameId)..'\nPlaceId: '..tostring(game.PlaceId));return end
+if type(loadstring)~='function'or type(getgenv)~='function'then status('Stopped: this executor is missing loadstring or getgenv.');return end
+local source=[========================[
 -- Aurora + Fyrelith. Original Settings appearance and demo tools excluded.
 local source=[======================[
 -- Aurora presentation with the user's Fyrelith game-controller bundle.
@@ -16405,3 +16426,23 @@ getgenv().FyrelithScriptSource=source
 local run,message=loadstring(source,'Aurora Fyrelith')
 assert(run,message)
 return run()
+
+]========================]
+status('3. Compiling '..tostring(#source)..' bytes…')
+task.wait()
+local ok,run,message=pcall(loadstring,source,'FYRELITH mobile diagnostic')
+if not ok or not run then status('Compile failed:\n'..tostring(message or run));return end
+status('4. Starting UI…')
+local previous=getgenv().AuroraFyrelithBridge
+local started,err=xpcall(run,function(e)return tostring(e)..'\n'..debug.traceback()end)
+if not started then status('Startup failed:\n'..tostring(err):sub(1,2200));return end
+local timeout=os.clock()+30
+repeat
+ local bridge=getgenv().AuroraFyrelithBridge
+ if bridge and bridge~=previous then
+  if bridge.Error then status('Game controller failed:\n'..tostring(bridge.Error):sub(1,2200));return end
+  if bridge.Ready then status('SUCCESS · UI and game controllers loaded.\nYou can close this diagnostic panel.');return end
+ end
+ task.wait(.2)
+until os.clock()>timeout
+status('Timed out while starting game controllers.\nPlease send a screenshot of this panel.')
